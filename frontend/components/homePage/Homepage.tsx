@@ -5,7 +5,7 @@ const ZKComponent = () => {
     const [isValid, setIsValid] = useState(null);
 
     const [formData, setFormData] = useState({
-        id: '',
+        patientId: '',
         firstName: '',
         lastName: '',
         age: '',
@@ -71,8 +71,8 @@ const ZKComponent = () => {
                                     <span className="label-text font-medium">ID</span>
                                 </label>
                                 <input type="text"
-                                    name="id"
-                                    value={formData.id}
+                                    name="patientId"
+                                    value={formData.patientId}
                                     onChange={handleChange}
                                     required
                                     autoComplete="off"

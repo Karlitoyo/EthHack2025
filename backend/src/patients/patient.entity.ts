@@ -6,6 +6,9 @@ export class Patient {
   @PrimaryGeneratedColumn()
   id: string;
 
+  @Column({ nullable: true })
+  patientId: string;
+
   @Column()
   firstName: string;
 

@@ -3,7 +3,7 @@ import { IsNotEmpty, IsNumber, IsString } from 'class-validator';
 export class PatientDataDto {
   @IsNotEmpty()
   @IsString()
-  id: string;
+  patientId: string;
 
   @IsNotEmpty()
   @IsString()

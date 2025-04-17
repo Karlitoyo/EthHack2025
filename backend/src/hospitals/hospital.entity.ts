@@ -6,6 +6,9 @@ export class Hospital {
   @PrimaryGeneratedColumn()
   id: string;
 
+  @Column({ nullable: true })
+  hospitalId: string;
+
   @Column()
   name: string;
 
@@ -24,6 +27,9 @@ export class Hospital {
   @Column({ nullable: true })
   capacity?: string;
 
-  @OneToMany(() => Patient, patient => patient.hospital)
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
+
+  @OneToMany(() => Patient, patient => patient.hospital, { eager: true }) // or lazy if needed
   patients: Patient[];
 }

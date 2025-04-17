@@ -5,7 +5,7 @@ const HospitalComponent = () => {
     const [isValid, setIsValid] = useState(null);
 
     const [formData, setFormData] = useState({
-        id: '',
+        hospitalId: '',
         name: '',
         location: '',
         treatment: '',
@@ -49,8 +49,8 @@ const HospitalComponent = () => {
                                     <span className="label-text font-medium">ID</span>
                                 </label>
                                 <input type="text"
-                                    name="id"
-                                    value={formData.id}
+                                    name="hospitalId"
+                                    value={formData.hospitalId}
                                     onChange={handleChange}
                                     required
                                     autoComplete="off"

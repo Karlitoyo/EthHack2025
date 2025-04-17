@@ -20,6 +20,7 @@ const Layout = ({ children, title = "This is the default title" }: Props) => (
           <ul className="menu menu-horizontal px-1">
             <li><Link href="/" className="btn btn-ghost normal-case text-xl">Home</Link></li>
             <li><Link href="/about" className="btn btn-ghost normal-case text-xl">About</Link></li>
+            <li><Link href="/returnData" className="btn btn-ghost normal-case text-xl">Return Data</Link></li>
           </ul>
         </div>
         <div className="navbar-center hidden lg:flex">
