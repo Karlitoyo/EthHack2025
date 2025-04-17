@@ -79,6 +79,9 @@ async findPatientsInHospitalsByTreatment(treatment: string) {
         firstName: p.firstName,
         lastName: p.lastName,
         age: p.age,
+        email: p.email,
+        address: p.address,
+        phone: p.contactNumber,
         treatment: p.treatment,
       })),
     };

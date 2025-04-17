@@ -55,15 +55,24 @@ export default function TreatmentSearch() {
 
                                     <div className="divider">Patients</div>
                                     {hospital.patients.length > 0 ? (
-                                        <ul className="menu bg-base-200 rounded-box">
+                                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                                             {hospital.patients.map((patient: any) => (
-                                                <li key={patient.id}>
-                                                    <a>
-                                                        {patient.firstName} {patient.lastName}, Age: {patient.age}
-                                                    </a>
-                                                </li>
+                                                <div key={patient.id} className="card bg-base-200 shadow-sm">
+                                                    <div className="card-body p-4">
+                                                        <h5 className="card-title text-base">
+                                                            {patient.firstName} {patient.lastName}
+                                                        </h5>
+                                                        <div className="text-sm">
+                                                            <p><span className="font-medium">Age:</span> {patient.age}</p>
+                                                            <p><span className="font-medium">Email:</span> {patient.email}</p>
+                                                            <p><span className="font-medium">Phone:</span> {patient.phone}</p>
+                                                            <p><span className="font-medium">Address:</span> {patient.address}</p>
+                                                            <p><span className="font-medium">Treatment:</span> {patient.treatment}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             ))}
-                                        </ul>
+                                        </div>
                                     ) : (
                                         <p className="text-opacity-50">No patients with this treatment at this hospital.</p>
                                     )}

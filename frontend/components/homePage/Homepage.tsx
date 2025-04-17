@@ -62,7 +62,7 @@ const ZKComponent = () => {
             <div className="card w-full max-w-lg bg-base-100 shadow-xl">
                 <div className="card-body">
                     <h1 className="card-title text-2xl font-bold">ZK-SNARK Example</h1>
-                    <p className="mb-4">Generate and verify a zero-knowledge proof.</p>
+                    <p className="mb-4">Generate Patient Record.</p>
 
                     <form className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
