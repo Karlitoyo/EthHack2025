@@ -1,19 +1,17 @@
 import { useState } from 'react';
 
-const ZKComponent = () => {
+const HospitalComponent = () => {
     const [proof, setProof] = useState(null);
     const [isValid, setIsValid] = useState(null);
 
     const [formData, setFormData] = useState({
         id: '',
-        firstName: '',
-        lastName: '',
-        age: '',
-        address: '',
-        dateOfBirth: '',
+        name: '',
+        location: '',
         treatment: '',
-        email: '',
         contactNumber: '',
+        adminName: '',
+        capacity: '',
     });
     console.log('Form data:', formData);
 
@@ -23,7 +21,7 @@ const ZKComponent = () => {
 
     const generateProof = async () => {
         try {
-            const response = await fetch('http://localhost:4001/patients/create', {
+            const response = await fetch('http://localhost:4001/hospitals/create', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -34,26 +32,6 @@ const ZKComponent = () => {
             setProof(result);
         } catch (error) {
             console.error('Proof generation error:', error);
-        }
-    };
-
-    const verifyProof = async () => {
-        console.log("Payload sent to Rust verify-proof:", JSON.stringify(proof, null, 2));
-        if (!proof) return alert('Generate proof first');
-        try {
-            const response = await fetch('http://localhost:4001/zk-snark/verify-proof', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(proof),
-            });
-            const result = await response.json();
-            console.log('Proof sent:', JSON.stringify(proof));
-            console.log('Public Input sent:', JSON.stringify(proof.public_input));
-            setIsValid(result);
-        } catch (error) {
-            console.error('Proof verification error:', error);
         }
     };
 
@@ -84,100 +62,68 @@ const ZKComponent = () => {
                                     <span className="label-text font-medium">Name</span>
                                 </label>
                                 <input type="text"
-                                    name="firstName"
-                                    value={formData.firstName}
+                                    name="name"
+                                    value={formData.name}
                                     onChange={handleChange}
                                     required
                                     autoComplete="off"
                                     className="input input-bordered w-full"
-                                    placeholder="Enter name" />
+                                    placeholder="Enter hospital name" />
                             </div>
                             <div className="form-control">
                                 <label className="label">
-                                    <span className="label-text font-medium">Surname</span>
+                                    <span className="label-text font-medium">Location</span>
                                 </label>
                                 <input type="text"
-                                    name="lastName"
-                                    value={formData.lastName}
+                                    name="location"
+                                    value={formData.location}
                                     onChange={handleChange}
                                     required
                                     autoComplete="off"
                                     className="input input-bordered w-full"
-                                    placeholder="Enter surname" />
+                                    placeholder="Enter location" />
                             </div>
                             <div className="form-control">
                                 <label className="label">
-                                    <span className="label-text font-medium">Age</span>
+                                    <span className="label-text font-medium">Capacity</span>
                                 </label>
-                                <input type="number" 
-                                className="input input-bordered w-full" 
-                                name="age"
-                                value={formData.age}
-                                onChange={handleChange}
-                                required
-                                autoComplete="off"
-                                placeholder="Enter age" />
+                                <input type="text" 
+                                    className="input input-bordered w-full" 
+                                    name="capacity"
+                                    value={formData.capacity}
+                                    onChange={handleChange}
+                                    required
+                                    autoComplete="off"
+                                    placeholder="Enter capacity of unit" />
                             </div>
                             <div className="form-control">
                                 <label className="label">
                                     <span className="label-text font-medium">Contact Number</span>
                                 </label>
-                                <input type="number" 
-                                className="input input-bordered w-full" 
-                                name="contactNumber"
-                                value={formData.contactNumber}
-                                onChange={handleChange}
-                                required
-                                autoComplete="off"
-                                placeholder="Enter phone number" />
+                                <input type="text" 
+                                    className="input input-bordered w-full" 
+                                    name="contactNumber"
+                                    value={formData.contactNumber}
+                                    onChange={handleChange}
+                                    required
+                                    autoComplete="off"
+                                    placeholder="Enter contact number" />
                             </div>
                             <div className="form-control">
                                 <label className="label">
-                                    <span className="label-text font-medium">E-mail</span>
+                                    <span className="label-text font-medium">Admin Name</span>
                                 </label>
                                 <input type="text" 
-                                className="input input-bordered w-full" 
-                                name="email"
-                                value={formData.email}
-                                onChange={handleChange}
-                                required
-                                autoComplete="off"
-                                placeholder="E-mail" />
+                                    className="input input-bordered w-full" 
+                                    name="adminName"
+                                    value={formData.adminName}
+                                    onChange={handleChange}
+                                    required
+                                    autoComplete="off"
+                                    placeholder="Enter admin name" />
                             </div>
                         </div>
-
-                        <div className="form-control">
-                            <label className="label">
-                                <span className="label-text font-medium">Address</span>
-                            </label>
-                            <textarea 
-                            className="textarea textarea-bordered w-full" 
-                            name="address"
-                            value={formData.address}
-                            onChange={handleChange}
-                            required
-                            autoComplete="off"
-                            placeholder="Enter address"></textarea>
-                        </div>
-
-                        <div className="form-control">
-                            <label className="label">
-                                <span className="label-text font-medium">Date of Birth</span>
-                            </label>
-                            <input type="date"
-                                name="dateOfBirth"
-                                value={formData.dateOfBirth}
-                                onChange={handleChange}
-                                required
-                                autoComplete="off"
-                            className="input input-bordered w-full" />
-                        </div>
-
-                        <div className="form-control">
-                            <label className="label">
-                                <span className="label-text font-medium">Treatment</span>
-                            </label>
-                            <select className="select select-bordered w-full"
+                        <select className="select select-bordered w-full"
                                 name="treatment"
                                 value={formData.treatment}
                                 onChange={handleChange}
@@ -189,12 +135,10 @@ const ZKComponent = () => {
                                 <option>Fracture</option>
                                 <option>Dietary</option>
                             </select>
-                        </div>
                     </form>
 
                     <div className="flex gap-2 mb-4 mt-4">
-                        <button className="btn btn-primary" onClick={generateProof}>Generate Proof</button>
-                        <button className="btn btn-accent" onClick={verifyProof}>Verify Proof</button>
+                        <button className="btn btn-primary" onClick={generateProof}>Create Hospital</button>
                     </div>
 
                     {isValid !== null && (
@@ -214,4 +158,4 @@ const ZKComponent = () => {
     );
 };
 
-export default ZKComponent;
+export default HospitalComponent;

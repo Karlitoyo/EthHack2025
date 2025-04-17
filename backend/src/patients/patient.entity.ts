@@ -4,25 +4,34 @@ import { Hospital } from '../hospitals/hospital.entity';
 @Entity()
 export class Patient {
   @PrimaryGeneratedColumn()
-  id: number;
+  id: string;
 
   @Column()
-  name: string;
+  firstName: string;
 
   @Column()
-  age: number;
+  lastName: string;
+
+  @Column()
+  age: string;
 
   @Column({ nullable: true })
   address?: string;
+
+  @Column({ nullable: true })
+  dateOfBirth?: string;
+
+  @Column({ nullable: true })
+  treatment?: string;
 
   @Column({ nullable: true })
   email?: string;
 
   @Column({ nullable: true })
   contactNumber?: string;
-
-  @Column({ nullable: true })
-  doctorsNotes?: string;
+  
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
 
   @ManyToOne(() => Hospital, hospital => hospital.patients)
   hospital: Hospital;

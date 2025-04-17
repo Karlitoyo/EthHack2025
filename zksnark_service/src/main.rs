@@ -27,7 +27,8 @@ struct ProofRequest {
     date_of_birth: String,
     condition: String,
     email: String,
-    phone: String,
+    #[serde(rename = "contactNumber")]
+    contact_number: String,
     #[serde(rename = "input")]
     input: u64, // Added the input field that's used in generate_proof
 }

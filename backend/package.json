@@ -28,6 +28,7 @@
     "@types/bn.js": "^5.1.6",
     "bigint-buffer": "^1.1.5",
     "bn.js": "^5.2.1",
+    "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "dotenv": "^16.4.7",
     "pg": "^8.14.1",

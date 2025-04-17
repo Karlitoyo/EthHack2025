@@ -4,19 +4,25 @@ import { Patient } from '../patients/patient.entity';
 @Entity()
 export class Hospital {
   @PrimaryGeneratedColumn()
-  id: number;
+  id: string;
 
   @Column()
   name: string;
 
+  @Column()
+  location: string;
+
   @Column({ nullable: true })
-  address?: string;
+  treatment?: string;
 
   @Column({ nullable: true })
   contactNumber?: string;
 
   @Column({ nullable: true })
   adminName?: string;
+
+  @Column({ nullable: true })
+  capacity?: string;
 
   @OneToMany(() => Patient, patient => patient.hospital)
   patients: Patient[];
