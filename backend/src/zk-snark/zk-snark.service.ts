@@ -1,22 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import * as BN from 'bn.js'; // import like this
-
-// function toBufferLE(bigIntValue: bigint, byteSize: number): Buffer {
-//   const buffer = Buffer.alloc(byteSize);
-//   buffer.writeBigInt64LE(bigIntValue, 0); // If your BigInt is less than 64 bits
-//   // Or for larger values, break down the BigInt into multiple 64-bit chunks
-//   return buffer;
-// }
+import { ZkSnarkDto } from './dto/zkSnarkDtos';
 
 @Injectable()
 export class ZkSnarkService {
   private baseUrl = 'http://172.29.14.163:8080';
 
-  async generateProof(data: number): Promise<any> {
+  async generateProof(data: ZkSnarkDto): Promise<any> {
     const response = await fetch(`${this.baseUrl}/generate-proof`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: data }),
+      body: JSON.stringify({ data }),
     });
     if (!response.ok)
       throw new Error(`Failed to generate proof: ${response.status}`);

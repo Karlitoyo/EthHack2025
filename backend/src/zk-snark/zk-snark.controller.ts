@@ -1,12 +1,13 @@
 import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
 import { ZkSnarkService } from './zk-snark.service';
+import { ZkSnarkDto } from './dto/zkSnarkDtos';
 
 @Controller('zk-snark')
 export class ZkSnarkController {
   constructor(private readonly zkSnarkService: ZkSnarkService) {}
 
   @Post('generate')
-  async generateProof(@Body('data') data: number) {
+  async generateProof(@Body('data') data: ZkSnarkDto): Promise<any> {
     return this.zkSnarkService.generateProof(data);
   }
 

@@ -14,8 +14,22 @@ use std::io::{Cursor, Read, Write};
 use std::sync::Mutex;
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct ProofRequest {
-    input: u64,
+    id: String,
+    #[serde(rename = "firstName")]
+    first_name: String,
+    #[serde(rename = "lastName")]
+    last_name: String,
+    age: u64,
+    address: String,
+    #[serde(rename = "dateOfBirth")]
+    date_of_birth: String,
+    condition: String,
+    email: String,
+    phone: String,
+    #[serde(rename = "input")]
+    input: u64, // Added the input field that's used in generate_proof
 }
 
 #[derive(Clone)]
