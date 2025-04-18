@@ -1,26 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import { ZkSnarkDto } from './dto/zkSnarkDtos';
+import { Patient } from '../patients/patient.entity';
+import { Hospital } from '../hospitals/hospital.entity';
+import { Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
 
 @Injectable()
 export class ZkSnarkService {
   private baseUrl = 'http://172.29.14.163:8080';
 
+  constructor(
+    @InjectRepository(Patient)
+    private readonly patientRepository: Repository<Patient>,
+    @InjectRepository(Hospital)
+    private readonly hospitalRepository: Repository<Hospital>,
+  ) {}
+
   async generateProof(data: ZkSnarkDto): Promise<any> {
     const response = await fetch(`${this.baseUrl}/generate-proof`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data }),
-    });
-    if (!response.ok)
-      throw new Error(`Failed to generate proof: ${response.status}`);
-    return await response.json();
-  }
-
-  async generateProofWithInput(input: number): Promise<any> {
-    const response = await fetch(`${this.baseUrl}/generate-proof`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input }),
+      body: JSON.stringify( data ),
     });
     if (!response.ok)
       throw new Error(`Failed to generate proof: ${response.status}`);
@@ -55,5 +55,23 @@ export class ZkSnarkService {
     const responseData = await response.json();
     console.log('Backend Verify Response:', responseData);
     return responseData.valid || false;
+  }
+
+  async generateTreatmentProof(patientId: string, treatment: string): Promise<any> {
+    const patient = await this.patientRepository.findOne({ where: { id: patientId, treatment } });
+    if (!patient) throw new Error('Patient/treatment not found');
+    const hospital = await this.hospitalRepository.findOne({ where: { id: patient.hospital.id } });
+    if (!hospital) throw new Error('Hospital not found');
+  
+    // Compose ZK payload
+    const zkPayload = {
+      hospital_id: hospital.id,
+      treatment: treatment,
+      patient_id: patient.patientId, // Use patient.patientId (the unique ID used for privacy, not database id)
+    };
+  
+    // Call ZkSnarkService (dependency inject this service!)
+    const proof = await this.generateProof(zkPayload);
+    return proof; // Forward this proof to the requester
   }
 }
