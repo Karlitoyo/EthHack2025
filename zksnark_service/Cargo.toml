@@ -3,17 +3,18 @@ name = "zksnark_service"
 version = "0.1.0"
 edition = "2021"
 
+# Updated Cargo.toml
 [dependencies]
+bellperson = "0.26.0"
+neptune = "11.0.0"
+blstrs = "0.7.1"
 actix-web = "4.3"
-bellman = "0.13.1"
-bls12_381 = "0.7.0"
-ff = "0.12.0"
-rand = "0.8.5"
+rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 lazy_static = "1.4.0"
 hex = "0.4.3"
-sha2 = "0.10.8"
-neptune = { version = "8", features = ["pasta"] }
-blstrs = "0.7.1"
-ff-zeroize = "0.6.3"
+sha2 = "0.10.2"
+typenum = "1.17.0"
+ff = "0.13.1"
+actix-web-codegen = "4.3.0"
