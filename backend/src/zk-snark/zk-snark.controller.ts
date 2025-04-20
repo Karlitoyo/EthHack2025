@@ -1,9 +1,7 @@
 import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
 import { ZkSnarkService } from './zk-snark.service';
-import { ZkSnarkDto } from './dto/zkSnarkDtos';
-import { GenerateTreatmentProofDto } from './dto/generateTreatmentDtos';
+import { GenerateTreatmentProofDto, VerifyProofDto } from './dto/generateTreatementProofDto';
 import { PatientService } from '../patients/patients';
-import { HttpException, HttpStatus } from '@nestjs/common';
 
 @Controller('zk-snark')
 export class ZkSnarkController {
@@ -12,43 +10,22 @@ export class ZkSnarkController {
     private readonly patientService: PatientService,
   ) {}
 
-  @Post('generate')
-  async generateTreatmentProof(@Body() dto: GenerateTreatmentProofDto) {
-    try {
-      // Call your patient service which orchestrates the ZK proof generation
-      const proof = await this.patientService.generateTreatmentProof(
-        dto.patientId,
-        dto.treatment,
-      );
-      // This proof can now be returned to frontend or another service for verification
-      return {
-        message: 'Proof generated successfully',
-        proof,
-      };
-    } catch (error) {
-      throw new HttpException(
-        error.message || 'Failed to generate proof',
-        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+  @Post('generate-proof')
+  async generateProof(@Body() dto: GenerateTreatmentProofDto) {
+    if (!dto.patientId || !dto.treatment) {
+      throw new BadRequestException('patientId and treatment are required');
     }
+    return await this.patientService.generateTreatmentProof(dto.patientId, dto.treatment);
   }
 
   @Post('verify-proof')
-  async verifyProof(@Body() body: any): Promise<boolean> {
-    const proofBytes = body.proof;
-    const publicInputBytes = body.public_input;
-
-    if (!publicInputBytes || !Array.isArray(publicInputBytes)) {
-      throw new BadRequestException('public_input is missing or invalid');
+  async verifyProof(@Body() dto: VerifyProofDto) {
+    if (!dto.proof || !dto.public_input) {
+      throw new BadRequestException('Proof and public input are required');
     }
-
-    console.log('Public Input sent:', publicInputBytes);
-    console.log('Proof sent:', proofBytes);
-
-    // Pass the complete proof object to the service
-    return this.zkSnarkService.verifyProof({
-      proof: Array.from(proofBytes), // <- Make sure explicitly to Array (numeric).
-      public_input: Array.from(publicInputBytes), // <- Make sure explicitly to Array (numeric).
-    });
+    if (dto.public_input.length !== 32) {
+      throw new BadRequestException('Public input must be exactly one 32-byte element');
+    }
+    return await this.zkSnarkService.verifyProof(dto); // Pass-through to ZKP service
   }
 }

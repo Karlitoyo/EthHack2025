@@ -21,6 +21,8 @@ const Layout = ({ children, title = "This is the default title" }: Props) => (
             <li><Link href="/" className="btn btn-ghost normal-case text-xl">Home</Link></li>
             <li><Link href="/about" className="btn btn-ghost normal-case text-xl">About</Link></li>
             <li><Link href="/returnData" className="btn btn-ghost normal-case text-xl">Return Data</Link></li>
+            <li><Link href="/generateProof" className="btn btn-ghost normal-case text-xl">Generate Proof</Link></li>
+            <li><Link href="/validateProof" className="btn btn-ghost normal-case text-xl">Validate Proof</Link></li>
           </ul>
         </div>
         <div className="navbar-center hidden lg:flex">

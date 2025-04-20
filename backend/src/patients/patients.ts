@@ -105,33 +105,26 @@ export class PatientService {
     };
   }
 
-  async generateTreatmentProof(patientId: string, treatment: string) {
-    // 1. Load patient by db id and treatment
-    const patient = await this.patientRepository.findOne({
-      where: { id: patientId, treatment },
-      relations: ['hospital'],
-    });
-    if (!patient) {
-      throw new Error('Patient or treatment not found');
-    }
+async generateTreatmentProof(patientId: string, treatment: string) {
+  const patient = await this.patientRepository.findOne({
+    where: { patientId: patientId, treatment },
+    relations: ['hospital'],
+  });
+  if (!patient) throw new Error('Patient/treatment not found');
+  const hospital = patient.hospital;
+  if (!hospital) throw new Error('Hospital not found for patient');
+  if (!hospital.hospitalId)
+    throw new Error(
+      'hospital.hospitalId missing: use a privacy-safe unique identifier (not DB pk) as public field for ZKP input'
+    );
 
-    // 2. Get hospital
-    const hospital = patient.hospital;
-    if (!hospital || !hospital.id) {
-      throw new Error('Hospital not found for patient');
-    }
-
-    // 3. Compose proof input payload
-    const proofPayload = {
-      hospital_id: hospital.id,
-      treatment: treatment,
-      patient_id: patient.patientId, // use privacy-preserving ID
-    };
-
-    // 4. Call ZKP microservice
-    const proof = await this.zkSnarkService.generateProof(proofPayload);
-
-    // 5. Return proof
-    return proof;
-  }
+  // Compose proof input with pseudo-anonymous IDs
+  const proofPayload = {
+    hospital_id: hospital.hospitalId,    // <-- use the public, privacy-safe id
+    treatment,
+    patient_id: patient.patientId,       // use privacy-preserving ID
+  };
+  const proof = await this.zkSnarkService.generateProof(proofPayload);
+  return proof;
+}
 }

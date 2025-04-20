@@ -16,45 +16,25 @@ export class ZkSnarkService {
     private readonly hospitalRepository: Repository<Hospital>,
   ) {}
 
-  async generateProof(data: ZkSnarkDto): Promise<any> {
-    const response = await fetch(`${this.baseUrl}/generate-proof`, {
+  async generateProof(payload: { hospital_id: string, treatment: string, patient_id: string }) {
+    const res = await fetch(`${this.baseUrl}/generate-proof`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify( data ),
+      body: JSON.stringify(payload),
     });
-    if (!response.ok)
-      throw new Error(`Failed to generate proof: ${response.status}`);
-    return await response.json();
+    if (!res.ok) throw new Error(`ZKP proof generation error: ${res.status}`);
+    return res.json();
   }
 
   // zk-snark.service.ts
-  async verifyProof(proof: any): Promise<boolean> {
-    if (!proof) throw new Error('Proof required for verification');
-
-    // proof.public_input (directly from Rust backend) is already a byte array (LE)
-    if (!proof.public_input || proof.public_input.length !== 32) {
-      throw new Error('Public input must be exactly one 32-byte element');
-    }
-
-    const proofPayload = {
-      proof: proof.proof,
-      public_input: proof.public_input, // Directly use as-is
-    };
-
-    console.log('Payload sent to backend (Rust verifier):', proofPayload);
-
-    const response = await fetch(`${this.baseUrl}/verify-proof`, {
+  async verifyProof({proof, public_input}: {proof: number[], public_input: number[]}) {
+    const res = await fetch(`${this.baseUrl}/verify-proof`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(proofPayload),
+      body: JSON.stringify({proof, public_input}),
     });
-
-    if (!response.ok)
-      throw new Error(`Failed verification: ${response.status}`);
-
-    const responseData = await response.json();
-    console.log('Backend Verify Response:', responseData);
-    return responseData.valid || false;
+    if (!res.ok) throw new Error(`ZKP verification error: ${res.status}`);
+    return res.json();
   }
 
   async generateTreatmentProof(patientId: string, treatment: string): Promise<any> {
