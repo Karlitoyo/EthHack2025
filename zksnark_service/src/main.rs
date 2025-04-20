@@ -1,4 +1,5 @@
 use actix_web::{post, web, App, HttpResponse, HttpServer, Responder};
+use bellperson::gadgets::boolean::Boolean;
 use bellperson::gadgets::num::AllocatedNum;
 use bellperson::groth16::{
     create_random_proof, generate_random_parameters, prepare_verifying_key, verify_proof, Proof,
@@ -46,6 +47,9 @@ pub struct ProofRequest {
     pub hospital_id: String,
     pub treatment: String,
     pub patient_id: String,
+    pub merkle_leaf_index: u64,
+    pub merkle_path: Vec<String>,     // Each as a hex string for each sibling hash
+    pub merkle_root: String           // hex string for the root hash
 }
 
 #[derive(Serialize, Deserialize)]
@@ -56,39 +60,107 @@ pub struct ProofResponse {
 
 #[derive(Clone)]
 pub struct MyCircuit {
-    // Private inputs
+    // Private witness(es)
     pub hospital_id: Option<Fr>,
     pub treatment: Option<Fr>,
     pub patient_id: Option<Fr>,
-    // Public input (the commitment)
-    pub commitment: Option<Fr>,
+
+    // Merkle authentication
+    pub leaf_index: Option<u64>,
+    pub merkle_path: Vec<Option<Fr>>, // Each level is a sibling hash
+    pub merkle_root: Option<Fr>,      // Root to prove against
+
+    // Public input commitment (to secretly witnessed values)
+    pub preimage_commitment: Option<Fr>,
 }
 
-// Circuit implementation
 impl Circuit<Fr> for MyCircuit {
     fn synthesize<CS: ConstraintSystem<Fr>>(self, cs: &mut CS) -> Result<(), SynthesisError> {
-        let hospital_id = AllocatedNum::alloc(&mut *cs, || {
+        // 1. Allocate secret preimage values (hospital, treatment, patient)
+        let hospital_id = AllocatedNum::alloc(cs.namespace(|| "hospital_id"), || {
             self.hospital_id.ok_or(SynthesisError::AssignmentMissing)
         })?;
-        let treatment = AllocatedNum::alloc(&mut *cs, || {
+        let treatment = AllocatedNum::alloc(cs.namespace(|| "treatment"), || {
             self.treatment.ok_or(SynthesisError::AssignmentMissing)
         })?;
-        let patient_id = AllocatedNum::alloc(&mut *cs, || {
+        let patient_id = AllocatedNum::alloc(cs.namespace(|| "patient_id"), || {
             self.patient_id.ok_or(SynthesisError::AssignmentMissing)
         })?;
-        let commitment_var = cs.alloc_input(
-            || "commitment",
-            || self.commitment.ok_or(SynthesisError::AssignmentMissing),
+
+        // 2. Poseidon hash the tuple as the leaf hash
+        let poseidon_constants = PoseidonConstants::<Fr, U3>::new();
+        let leaf = poseidon_hash(
+            cs.namespace(|| "poseidon_leaf"),
+            vec![hospital_id.clone(), treatment.clone(), patient_id.clone()],
+            &poseidon_constants,
         )?;
-        let params: PoseidonConstants<Fr, typenum::UInt<typenum::UInt<typenum::UTerm, typenum::B1>, typenum::B1>> = PoseidonConstants::<Fr, U3>::new();
-        let preimages: Vec<AllocatedNum<Fr>> = vec![hospital_id.clone(), treatment.clone(), patient_id.clone()];
-        let hash: AllocatedNum<Fr> = poseidon_hash(&mut *cs, preimages, &params)?;
+
+        // 3. Merkle path: Prove leaf is in tree with public root
+        // Allocate path elements (sibling hashes)
+        let mut cur_hash = leaf.clone();
+        let path = self.merkle_path.iter().enumerate().map(|(i, opt)| {
+            AllocatedNum::alloc(cs.namespace(|| format!("merkle_path_{}", i)), || {
+                opt.ok_or(SynthesisError::AssignmentMissing)
+            })
+        }).collect::<Result<Vec<_>, _>>()?;
+
+        // Allocate leaf index bits for direction
+        let index = self.leaf_index.unwrap_or(0);
+        let mut leaf_index_bits = Vec::new();
+        for i in 0..path.len() {
+            leaf_index_bits.push((index >> i) & 1 == 1);
+        }
+
+        // Traverse up the tree
+        for (i, (sibling, bit)) in path.iter().zip(leaf_index_bits.iter()).enumerate() {
+            let (left, right) = if *bit {
+                (sibling, &cur_hash)
+            } else {
+                (&cur_hash, sibling)
+            };
+            cur_hash = poseidon_hash(
+                cs.namespace(|| format!("merkle_hash_up_{}", i)),
+                vec![left.clone(), right.clone()],
+                &PoseidonConstants::<Fr, U3>::new(),
+            )?;
+        }
+
+        // Allocate Merkle root as public input
+        let root_var = cs.alloc_input(
+            || "merkle root",
+            || self.merkle_root.ok_or(SynthesisError::AssignmentMissing)
+        )?;
+
+        // Enforce computed root == public input
         cs.enforce(
-            || "commitment is poseidon hash",
-            |lc: bellperson::LinearCombination<_>| lc + hash.get_variable(),
-            |lc: bellperson::LinearCombination<_>| lc + CS::one(),
-            |lc: bellperson::LinearCombination<_>| lc + commitment_var,
+            || "tree path leads to public root",
+            |lc| lc + cur_hash.get_variable(),
+            |lc| lc + CS::one(),
+            |lc| lc + root_var,
         );
+
+        // 4. Range check: patient_id < 2^20
+        let bits: Vec<Boolean> = patient_id.to_bits_le(cs.namespace(|| "patient_id_bits"))?;
+        for (i, bit) in bits.iter().enumerate().skip(20) {
+            Boolean::enforce_equal(
+                cs.namespace(|| format!("range bit[{}] zero", i)),
+                bit,
+                &Boolean::constant(false)
+            )?;
+        }
+
+        // 5. Preimage commitment: public input = Poseidon(hospital_id, treatment, patient_id)
+        let comm_var = cs.alloc_input(
+            || "preimage commitment",
+            || self.preimage_commitment.ok_or(SynthesisError::AssignmentMissing),
+        )?;
+        cs.enforce(
+            || "public commitment is poseidon(hospital, treatment, patient)",
+            |lc| lc + leaf.get_variable(),
+            |lc| lc + CS::one(),
+            |lc| lc + comm_var,
+        );
+
         Ok(())
     }
 }
@@ -166,7 +238,10 @@ async fn generate_proof(input: web::Json<ProofRequest>) -> impl Responder {
                         hospital_id: None,
                         treatment: None,
                         patient_id: None,
-                        commitment: None,
+                        leaf_index: None,
+                        merkle_path: vec![None; 32],      // 32 for tree of depth 32
+                        merkle_root: None,
+                        preimage_commitment: None,
                     },
                     &mut OsRng,
                 )
@@ -194,7 +269,10 @@ async fn generate_proof(input: web::Json<ProofRequest>) -> impl Responder {
             hospital_id: Some(hospital_id_fr),
             treatment: Some(treatment_fr),
             patient_id: Some(patient_id_fr),
-            commitment: Some(commitment),
+            leaf_index: Some(actual_leaf_index),         // <-- e.g. 17
+            merkle_path: actual_merkle_path.clone(),     // <-- Vec<Option<Scalar>>, sibling nodes
+            merkle_root: Some(actual_merkle_root),       // <-- Scalar for the root
+            preimage_commitment: Some(commitment),       // <-- (Your public Poseidon commitment)
         },
         params,
         &mut OsRng,
