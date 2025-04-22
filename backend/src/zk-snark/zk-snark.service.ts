@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { ZkSnarkDto } from './dto/zkSnarkDtos';
 import { Patient } from '../patients/patient.entity';
 import { Hospital } from '../hospitals/hospital.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
+import { MerkleService } from 'src/merkle/merkle.service';
+import { assertIs32ByteHex } from 'src/merkle/utils';
 
 @Injectable()
 export class ZkSnarkService {
@@ -14,9 +15,14 @@ export class ZkSnarkService {
     private readonly patientRepository: Repository<Patient>,
     @InjectRepository(Hospital)
     private readonly hospitalRepository: Repository<Hospital>,
+    private readonly merkleService: MerkleService,
   ) {}
 
-  async generateProof(payload: { hospital_id: string, treatment: string, patient_id: string }) {
+  async generateProof(payload: {
+    hospital_id: string;
+    treatment: string;
+    patient_id: string;
+  }) {
     const res = await fetch(`${this.baseUrl}/generate-proof`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -27,31 +33,54 @@ export class ZkSnarkService {
   }
 
   // zk-snark.service.ts
-  async verifyProof({proof, public_input}: {proof: number[], public_input: number[]}) {
+  async verifyProof({
+    proof,
+    public_input,
+  }: {
+    proof: number[];
+    public_input: number[];
+  }) {
     const res = await fetch(`${this.baseUrl}/verify-proof`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({proof, public_input}),
+      body: JSON.stringify({ proof, public_input }),
     });
+    console.log('PROOF sz', proof.length, proof.slice(0, 8));
+    console.log(
+      'PUBLIC_INPUT sz',
+      public_input.length,
+      public_input.slice(0, 8),
+    );
     if (!res.ok) throw new Error(`ZKP verification error: ${res.status}`);
     return res.json();
   }
 
-  async generateTreatmentProof(patientId: string, treatment: string): Promise<any> {
-    const patient = await this.patientRepository.findOne({ where: { id: patientId, treatment } });
-    if (!patient) throw new Error('Patient/treatment not found');
-    const hospital = await this.hospitalRepository.findOne({ where: { id: patient.hospital.id } });
-    if (!hospital) throw new Error('Hospital not found');
-  
-    // Compose ZK payload
-    const zkPayload = {
-      hospital_id: hospital.id,
-      treatment: treatment,
-      patient_id: patient.patientId, // Use patient.patientId (the unique ID used for privacy, not database id)
-    };
-  
-    // Call ZkSnarkService (dependency inject this service!)
-    const proof = await this.generateProof(zkPayload);
-    return proof; // Forward this proof to the requester
+  async generateTreatmentProof(payload: {
+    hospital_id: string;
+    treatment: string;
+    patient_id: string;
+    merkle_leaf_index: number;
+    merkle_path: string[];
+    merkle_root: string;
+  }) {
+    // --- VALIDATE payload ----
+    payload.merkle_path.forEach((h, i) =>
+      assertIs32ByteHex(`merkle_path[${i}]`, h),
+    );
+    assertIs32ByteHex('merkle_root', payload.merkle_root);
+
+    const rustUrl = `${this.baseUrl}/generate-proof`;
+    const response = await fetch(rustUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    console.log(JSON.stringify(payload, null, 2));
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Rust microservice error: ${response.status}: ${err}`);
+    }
+    // JSON result contains ZK proof and public input
+    return await response.json();
   }
 }

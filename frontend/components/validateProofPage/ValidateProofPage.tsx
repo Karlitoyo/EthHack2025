@@ -16,6 +16,10 @@ export default function VerifyProof() {
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(proof)
       });
+      // After receiving proof response from `/generate-proof`
+      console.log('Proof response:', proof);
+      console.log('Response:', res);
+      console.log('Response body:', res.body);
       if (!res.ok) throw new Error(await res.text());
       setResult(await res.json());
     } catch (err) {

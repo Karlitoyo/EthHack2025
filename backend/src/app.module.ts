@@ -11,6 +11,8 @@ import { HospitalsController } from './hospitals/hospitals.controller';
 import { PatientsController } from './patients/patients.controller';
 import { ZkSnarkModule } from './zk-snark/zk-snark.module';
 import { ZkSnarkController } from './zk-snark/zk-snark.controller';
+import { MerkleController } from './merkle/merkle.controller';
+import { MerkleModule } from './merkle/merkle.module';
 
 @Module({
   imports: [
@@ -28,12 +30,14 @@ import { ZkSnarkController } from './zk-snark/zk-snark.controller';
     PatientsModule,
     ZkSnarkModule,
     ConfigModule.forRoot(),
+    MerkleModule,
   ],
   controllers: [
     AppController,
     HospitalsController,
     PatientsController,
     ZkSnarkController,
+    MerkleController,
   ],
   providers: [AppService],
 })

@@ -1,18 +1,19 @@
-# Use the latest stable release of Rust
-FROM rust:latest
+FROM rust:latest AS builder
 
-# Create app directory for the source code
 WORKDIR /usr/src/app
+# 1. Copy manifests and source separately to optimize cache use
+COPY Cargo.toml .
+COPY Cargo.lock .
 
-# Copy the current directory contents into the container at /usr/src/app
+# 2. Only copy source now (this busts the cache for next steps if source changes)
 COPY . .
 
-# Build the binary application
-RUN cargo install --path .
+# 3. Build release binary
+RUN cargo build --release
 
-# Expose port
+FROM rust:latest
+WORKDIR /app
+COPY --from=builder /usr/src/app/target/release/zksnark_service .
+
 EXPOSE 8080
-
-# Run the application
-# Replace with actual service binary name
-CMD ["zksnark_service"]
+CMD ["./zksnark_service"]

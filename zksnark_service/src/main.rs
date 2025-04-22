@@ -14,9 +14,53 @@ use neptune::poseidon::{Poseidon, PoseidonConstants};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
+use std::fs;
 use std::io::Cursor;
+use std::path::Path;
 use std::sync::Mutex;
 use typenum::U3;
+
+pub const MERKLE_PATH_LEN: usize = 3; // For a tree with 16 leaves
+
+#[derive(Deserialize, Debug)]
+pub struct ProofRequest {
+    pub hospital_id: String,
+    pub treatment: String,
+    pub patient_id: String,
+    pub merkle_leaf_index: u64,
+    pub merkle_path: Vec<String>, // Each as a hex string for each sibling hash
+    pub merkle_root: String,      // hex string for the root hash
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ProofResponse {
+    proof: Vec<u8>,
+    public_input: Vec<u8>,
+}
+
+#[derive(Clone)]
+pub struct MyCircuit {
+    pub hospital_id: Option<Fr>,
+    pub treatment: Option<Fr>,
+    pub patient_id: Option<Fr>,
+    pub leaf_index: Option<u64>,
+    pub merkle_path: Vec<Option<Fr>>, // Length must be MERKLE_PATH_LEN!
+    pub merkle_root: Option<Fr>,
+    pub preimage_commitment: Option<Fr>,
+}
+
+// Produces a hash identifying the circuit version/configuration for param binding
+fn circuit_hash() -> Vec<u8> {
+    use sha2::{Digest, Sha256};
+    // Compose anything that would change if the circuit changes!
+    let mut hasher = Sha256::new();
+    hasher.update(b"poseidon-merkle-circuit-v1"); // Change this if you change logic!
+    hasher.update(b"MERKLE_PATH_LEN");
+    hasher.update(&MERKLE_PATH_LEN.to_le_bytes());
+    // Add signature of any other circuit 'shape' constants here!
+    hasher.finalize().to_vec()
+}
 
 fn string_to_fr(s: &str) -> blstrs::Scalar {
     use blstrs::Scalar as Fr;
@@ -42,36 +86,91 @@ fn string_to_fr(s: &str) -> blstrs::Scalar {
     Fr::from_bytes_be(&arr).unwrap()
 }
 
-#[derive(Deserialize)]
-pub struct ProofRequest {
-    pub hospital_id: String,
-    pub treatment: String,
-    pub patient_id: String,
-    pub merkle_leaf_index: u64,
-    pub merkle_path: Vec<String>,     // Each as a hex string for each sibling hash
-    pub merkle_root: String           // hex string for the root hash
+fn print_params_hash(path: &str) {
+    use sha2::{Digest, Sha256};
+    use std::fs;
+    if let Ok(bytes) = fs::read(path) {
+        let hash = Sha256::digest(&bytes);
+        println!("PARAMS FILE: {} HASH: {:x}", path, hash);
+    } else {
+        println!("PARAMS FILE MISSING: {}", path);
+    }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct ProofResponse {
-    proof: Vec<u8>,
-    public_input: Vec<u8>,
-}
+fn init_params() {
+    let params_path = "zkp-params/groth16_params.bin";
+    let hash_path = "zkp-params/params.circuit_hash";
+    let expected_hash = circuit_hash();
+    let params;
 
-#[derive(Clone)]
-pub struct MyCircuit {
-    // Private witness(es)
-    pub hospital_id: Option<Fr>,
-    pub treatment: Option<Fr>,
-    pub patient_id: Option<Fr>,
+    // Check if params file exists
+    if Path::new(params_path).exists() {
+        println!("Loading SNARK parameters from file...");
+        // Load params
+        let mut fp = fs::File::open(params_path).expect("Failed to open Groth16 params file");
+        params = bellperson::groth16::Parameters::<Bls12>::read(&mut fp, false)
+            .expect("Failed to read Groth16 parameters");
 
-    // Merkle authentication
-    pub leaf_index: Option<u64>,
-    pub merkle_path: Vec<Option<Fr>>, // Each level is a sibling hash
-    pub merkle_root: Option<Fr>,      // Root to prove against
+        // Load/write/check circuit hash file
+        if Path::new(hash_path).exists() {
+            let got_hash = fs::read(hash_path).expect("Cannot read circuit hash file");
+            if got_hash != expected_hash {
+                eprintln!("❌ CIRCUIT HASH MISMATCH: Params file does not match this circuit!");
+                eprintln!("Expected:   {}", hex::encode(&expected_hash));
+                eprintln!("Found file: {}", hex::encode(&got_hash));
+                eprintln!("❌ Delete zkp-params/* and rerun trusted setup!");
+                std::process::exit(1);
+            } else {
+                println!("✔️  Circuit hash matches: {}", hex::encode(&expected_hash));
+            }
+        } else {
+            // Legacy: hash file missing—write it now
+            fs::write(hash_path, &expected_hash).expect("Failed to write circuit hash");
+            println!(
+                "Wrote missing circuit hash for params: {}",
+                hex::encode(&expected_hash)
+            );
+        }
+    } else {
+        // Params file does not exist—run trusted setup
+        println!("groth16_params.bin not found, running trusted setup to create it");
+        fs::create_dir_all("zkp-params").expect("Could not create parameter output directory");
+        params = generate_random_parameters::<Bls12, _, _>(
+            MyCircuit {
+                hospital_id: None,
+                treatment: None,
+                patient_id: None,
+                leaf_index: None,
+                merkle_path: vec![None; MERKLE_PATH_LEN],
+                merkle_root: None,
+                preimage_commitment: None,
+            },
+            &mut OsRng,
+        )
+        .expect("parameter generation failed");
 
-    // Public input commitment (to secretly witnessed values)
-    pub preimage_commitment: Option<Fr>,
+        // Save params and circuit hash
+        let mut fp = fs::File::create(params_path).expect("Could not create params file");
+        params.write(&mut fp).expect("Failed to write params");
+        fs::write(hash_path, &expected_hash).expect("Failed to write circuit hash");
+        println!("✅ Params saved to {}", params_path);
+        println!(
+            "✅ Circuit hash written to {}: {}",
+            hash_path,
+            hex::encode(&expected_hash)
+        );
+    }
+
+    // Always log
+    println!("CODE circuit_hash:  {}", hex::encode(&expected_hash));
+    match fs::read(hash_path) {
+        Ok(bytes) => println!("FILE circuit_hash:  {}", hex::encode(bytes)),
+        Err(e) => println!("(Couldn't read params.circuit_hash: {})", e),
+    }
+    print_params_hash(params_path);
+
+    let pvk = prepare_verifying_key(&params.vk);
+    *PARAMS.lock().unwrap() = Some((params, pvk));
 }
 
 impl Circuit<Fr> for MyCircuit {
@@ -98,11 +197,16 @@ impl Circuit<Fr> for MyCircuit {
         // 3. Merkle path: Prove leaf is in tree with public root
         // Allocate path elements (sibling hashes)
         let mut cur_hash = leaf.clone();
-        let path = self.merkle_path.iter().enumerate().map(|(i, opt)| {
-            AllocatedNum::alloc(cs.namespace(|| format!("merkle_path_{}", i)), || {
-                opt.ok_or(SynthesisError::AssignmentMissing)
+        let path = self
+            .merkle_path
+            .iter()
+            .enumerate()
+            .map(|(i, opt)| {
+                AllocatedNum::alloc(cs.namespace(|| format!("merkle_path_{}", i)), || {
+                    opt.ok_or(SynthesisError::AssignmentMissing)
+                })
             })
-        }).collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()?;
 
         // Allocate leaf index bits for direction
         let index = self.leaf_index.unwrap_or(0);
@@ -128,7 +232,7 @@ impl Circuit<Fr> for MyCircuit {
         // Allocate Merkle root as public input
         let root_var = cs.alloc_input(
             || "merkle root",
-            || self.merkle_root.ok_or(SynthesisError::AssignmentMissing)
+            || self.merkle_root.ok_or(SynthesisError::AssignmentMissing),
         )?;
 
         // Enforce computed root == public input
@@ -145,14 +249,17 @@ impl Circuit<Fr> for MyCircuit {
             Boolean::enforce_equal(
                 cs.namespace(|| format!("range bit[{}] zero", i)),
                 bit,
-                &Boolean::constant(false)
+                &Boolean::constant(false),
             )?;
         }
 
         // 5. Preimage commitment: public input = Poseidon(hospital_id, treatment, patient_id)
         let comm_var = cs.alloc_input(
             || "preimage commitment",
-            || self.preimage_commitment.ok_or(SynthesisError::AssignmentMissing),
+            || {
+                self.preimage_commitment
+                    .ok_or(SynthesisError::AssignmentMissing)
+            },
         )?;
         cs.enforce(
             || "public commitment is poseidon(hospital, treatment, patient)",
@@ -176,114 +283,192 @@ lazy_static! {
 
 #[post("/generate-proof")]
 async fn generate_proof(input: web::Json<ProofRequest>) -> impl Responder {
-    // Canonical mapping for all fields
+    // ========== Input Logging ==========
+    println!("\n--- Incoming ProofRequest ---");
+    println!("hospital_id: {:?}", input.hospital_id);
+    println!("treatment:   {:?}", input.treatment);
+    println!("patient_id:  {:?}", input.patient_id);
+    println!("merkle_leaf_index: {}", input.merkle_leaf_index);
+    print_params_hash("zkp-params/groth16_params.bin");
+    // ----- Merkle Path Logging -----
+    println!("Merkle Path (hex):");
+    for (i, h) in input.merkle_path.iter().enumerate() {
+        println!("  [{:2}] {}", i, h);
+    }
+    // ----- Merkle Root Logging -----
+    println!("Merkle Root (hex): {}", input.merkle_root);
+    // -------------------------------
+    println!("--- PROOF REQUEST ---");
+    println!("Patient fields: {:?}", input);
+    println!("Merkle path (input): {:?}", input.merkle_path);
+    println!("Merkle root (input): {:?}", input.merkle_root);
+
+    // Check merkle path length
+    if input.merkle_path.len() != MERKLE_PATH_LEN {
+        return HttpResponse::BadRequest().json(format!(
+            "Merkle path must have {} siblings, got {}",
+            MERKLE_PATH_LEN,
+            input.merkle_path.len()
+        ));
+    }
+
+    println!("--- check endpoints gen-prof ---\n");
+    print_params_hash("zkp-params/groth16_params.bin");
+
+    // Map patient fields
     let hospital_id_fr = string_to_fr(&input.hospital_id);
     let treatment_fr = string_to_fr(&input.treatment);
     let patient_id_fr = string_to_fr(&input.patient_id);
 
-    // Calculate commitment (host Poseidon)
+    // After field conversions:
+    println!(
+        "Converted hospital_id_fr: {}",
+        hex::encode(hospital_id_fr.to_repr())
+    );
+    println!(
+        "Converted treatment_fr:  {}",
+        hex::encode(treatment_fr.to_repr())
+    );
+    println!(
+        "Converted patient_id_fr: {}",
+        hex::encode(patient_id_fr.to_repr())
+    );
+
+    // Poseidon commitment
     let constants = PoseidonConstants::<Fr, U3>::new();
     let mut poseidon = Poseidon::new(&constants);
-    poseidon
-        .input(hospital_id_fr)
-        .expect("Failed to input hospital_id");
-    poseidon
-        .input(treatment_fr)
-        .expect("Failed to input treatment");
-    poseidon
-        .input(patient_id_fr)
-        .expect("Failed to input patient_id");
+    poseidon.input(hospital_id_fr).expect("input hospital");
+    poseidon.input(treatment_fr).expect("input treatment");
+    poseidon.input(patient_id_fr).expect("input patient");
     let commitment = poseidon.hash();
 
-    println!("=== GENERATE PROOF ===");
+    // After Poseidon hash commitment:
     println!(
-        "hospital_id: {:?} => {:?}",
-        input.hospital_id,
-        hospital_id_fr.to_repr()
+        "Poseidon leaf/commitment: {}",
+        hex::encode(commitment.to_repr())
     );
-    println!(
-        "treatment:   {:?} => {:?}",
-        input.treatment,
-        treatment_fr.to_repr()
-    );
-    println!(
-        "patient_id:  {:?} => {:?}",
-        input.patient_id,
-        patient_id_fr.to_repr()
-    );
-    println!("commitment:{:?}", commitment.to_repr());
-    println!("commitment (hex): 0x{}", hex::encode(commitment.to_repr()));
 
-    // Path to the CRS (params) file, using the Docker mount
-    let params_path = "zkp-params/groth16_params.bin";
-    let mut params_lock = PARAMS.lock().unwrap();
-    if params_lock.is_none() {
-        println!("Looking for cached SNARK parameters...");
-        match std::fs::File::open(params_path) {
-            Ok(mut fp) => {
-                println!("Loading SNARK parameters from file...");
-                let params = bellperson::groth16::Parameters::<Bls12>::read(&mut fp, false)
-                    .expect("Failed to read Groth16 parameters");
-                let pvk = prepare_verifying_key(&params.vk);
-                *params_lock = Some((params, pvk));
+    // ========== Merkle Path Parsing & Logging ==========
+    let mut actual_merkle_path = vec![];
+    for (i, hex_sibling) in input.merkle_path.iter().enumerate() {
+        println!("Decoding merkle_path[{}]: {}", i, hex_sibling);
+        let bytes = match hex::decode(hex_sibling.trim_start_matches("0x")) {
+            Ok(b) => b,
+            Err(e) => {
+                println!("  [ERR] Invalid hex: {:?}", e);
+                return HttpResponse::BadRequest().json(format!(
+                    "Invalid hex in merkle path[{}]: {}",
+                    i, hex_sibling
+                ));
             }
-            Err(_e) => {
-                // === TRUSTED SETUP: GENERATE THE PARAMS IF MISSING ===
-                println!("groth16_params.bin not found, running trusted setup to create it (ONLY FOR DEV!)");
-                // Ensure the directory exists before saving file
-                std::fs::create_dir_all("zkp-params")
-                    .expect("Could not create parameter output directory");
-                let params = generate_random_parameters::<Bls12, _, _>(
-                    MyCircuit {
-                        hospital_id: None,
-                        treatment: None,
-                        patient_id: None,
-                        leaf_index: None,
-                        merkle_path: vec![None; 32],      // 32 for tree of depth 32
-                        merkle_root: None,
-                        preimage_commitment: None,
-                    },
-                    &mut OsRng,
-                )
-                .expect("parameter generation failed");
-                let pvk = prepare_verifying_key(&params.vk);
-                // Save parameters to file
-                let mut fp =
-                    std::fs::File::create(params_path).expect("could not create params file");
-                params.write(&mut fp).expect("Failed to write params");
-                println!("Params saved to {}", params_path);
-                *params_lock = Some((params, pvk));
-                // === END TRUSTED SETUP GENERATION ===
-            }
+        };
+        if bytes.len() != 32 {
+            println!("  [ERR] Not 32 bytes (got {})", bytes.len());
+            return HttpResponse::BadRequest().json(format!(
+                "Merkle sibling hash must be 32 bytes, got {}",
+                bytes.len()
+            ));
+        }
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(&bytes);
+        let fr_option = Fr::from_repr(arr);
+        if fr_option.is_some().into() {
+            let fr = fr_option.unwrap();
+            println!("  [OK ] Parses as Fr");
+            actual_merkle_path.push(Some(fr));
+        } else {
+            println!("  [ERR] Bytes not valid Fr: {:?}", arr);
+            return HttpResponse::BadRequest().json(format!(
+                "Merkle path[{}] bytes not valid Fr: {}",
+                i, hex_sibling
+            ));
         }
     }
-    // From here, you have guaranteed loaded params in params_lock
-    let (params, _) = params_lock.as_ref().unwrap();
-    println!("PARAMS pointer: {:p}", params);
-    println!(
-        "MyCircuit for proof: hospital_id: {:?}, treatment: {:?}, patient_id: {:?}, commitment: {:?}", 
-        hospital_id_fr, treatment_fr, patient_id_fr, commitment
-    );
-    let proof: Proof<Bls12> = create_random_proof(
+
+    // ========== Merkle Root Parsing & Logging ==========
+    println!("Parsing Merkle Root...");
+    let merkle_root_bytes = match hex::decode(input.merkle_root.trim_start_matches("0x")) {
+        Ok(b) => b,
+        Err(e) => {
+            println!("  [ERR] Invalid hex for root: {:?}", e);
+            return HttpResponse::BadRequest().json("Invalid hex in merkle_root");
+        }
+    };
+    if merkle_root_bytes.len() != 32 {
+        println!(
+            "  [ERR] merkle_root is not 32 bytes (got {})",
+            merkle_root_bytes.len()
+        );
+        return HttpResponse::BadRequest().json("Merkle root must be 32 bytes");
+    }
+    let mut root_arr = [0u8; 32];
+    root_arr.copy_from_slice(&merkle_root_bytes[..]);
+    let merkle_root_option = Fr::from_repr(root_arr);
+    let actual_merkle_root = if merkle_root_option.is_some().into() {
+        println!("  [OK ] merkle_root parses as Fr\n");
+        merkle_root_option.unwrap()
+    } else {
+        println!("  [ERR] merkle_root bytes not valid Fr: {:?}", root_arr);
+        return HttpResponse::BadRequest().json("Invalid Fr for merkle_root");
+    };
+
+    // ========== Begin ZK Proof ==========
+    let actual_leaf_index = input.merkle_leaf_index;
+    // Path to the CRS (params) file, using the Docker mount
+    let mutex_guard = PARAMS.lock().unwrap();
+    if mutex_guard.is_none() {
+        return HttpResponse::InternalServerError().json("Parameters not initialized");
+    }
+    let (params, _) = mutex_guard.as_ref().unwrap();
+    let proof = match create_random_proof(
         MyCircuit {
             hospital_id: Some(hospital_id_fr),
             treatment: Some(treatment_fr),
             patient_id: Some(patient_id_fr),
-            leaf_index: Some(actual_leaf_index),         // <-- e.g. 17
-            merkle_path: actual_merkle_path.clone(),     // <-- Vec<Option<Scalar>>, sibling nodes
-            merkle_root: Some(actual_merkle_root),       // <-- Scalar for the root
-            preimage_commitment: Some(commitment),       // <-- (Your public Poseidon commitment)
+            leaf_index: Some(actual_leaf_index), // <-- here!
+            merkle_path: actual_merkle_path.clone(),
+            merkle_root: Some(actual_merkle_root),
+            preimage_commitment: Some(commitment),
         },
         params,
         &mut OsRng,
-    )
-    .expect("proof generation failed");
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            println!("  [ERR] ZK Proof error: {:?}", e);
+            return HttpResponse::InternalServerError().json("Proof generation failed");
+        }
+    };
+
+    let params_guard = PARAMS.lock().unwrap();
+    if let Some((params, _pvk)) = params_guard.as_ref() {
+        println!("params.vk.alpha_g1:    {:?}", params.vk.alpha_g1);
+        println!("params.vk.beta_g1:     {:?}", params.vk.beta_g1);
+        println!("params.vk.beta_g2:     {:?}", params.vk.beta_g2);
+        // Don't access private fields of PreparedVerifyingKey
+        // Add more as needed...
+    }
+
+
     let mut proof_bytes: Vec<u8> = vec![];
     proof.write(&mut proof_bytes).unwrap();
+
+    // After proof generation:
+    println!(
+        "Proof bytes (hex, first 16): {}",
+        hex::encode(&proof_bytes[..16.min(proof_bytes.len())])
+    );
+
     let mut public_input_bytes: [u8; 32] = [0u8; 32];
     public_input_bytes.copy_from_slice(&commitment.to_repr());
-    println!("PROOF BYTES: {:?}", proof_bytes);
-    println!("PUBLIC INPUT BYTES: {:?}", public_input_bytes);
+
+    println!("Public input bytes: {}", hex::encode(&public_input_bytes));
+    println!(
+        "Public input bytes (hex, first 16): {}",
+        hex::encode(&public_input_bytes[..16])
+    );
+    println!("--- PROOF RESPONSE END ---");
+
     HttpResponse::Ok().json(ProofResponse {
         proof: proof_bytes,
         public_input: public_input_bytes.to_vec(),
@@ -301,6 +486,30 @@ async fn verify_proof_endpoint(
         "public_input (hex): 0x{}",
         hex::encode(&proof_data.public_input)
     );
+    print_params_hash("zkp-params/groth16_params.bin");
+    println!(
+        "Received proof bytes: len={} first8={:?}",
+        proof_data.proof.len(),
+        &proof_data.proof[0..8.min(proof_data.proof.len())]
+    );
+    println!(
+        "Received public_input bytes: len={} first8={:?}",
+        proof_data.public_input.len(),
+        &proof_data.public_input[0..8.min(proof_data.public_input.len())]
+    );
+
+    println!("--- check endpoints ver-prof ---\n");
+
+    println!(
+        "[VERIFY] Proof bytes: {}",
+        hex::encode(&proof_data.proof[..16.min(proof_data.proof.len())])
+    );
+    println!(
+        "[VERIFY] Public input: {}",
+        hex::encode(&proof_data.public_input)
+    );
+
+    print_params_hash("zkp-params/groth16_params.bin");
     // Parse proof
     let proof: Proof<Bls12> = match Proof::<Bls12>::read(&mut Cursor::new(&proof_data.proof)) {
         Ok(p) => p,
@@ -322,13 +531,36 @@ async fn verify_proof_endpoint(
         println!("Decoded public input as Fr: {:?}", fr.to_repr());
         let public_input = vec![fr];
         // Load params and verify
-        let params_lock = PARAMS.lock().unwrap();
-        if params_lock.is_none() {
+        let params_guard = PARAMS.lock().unwrap();
+        if params_guard.is_none() {
             return Ok(HttpResponse::InternalServerError().json("Parameters not initialized"));
         }
-        let (_, pvk) = params_lock.as_ref().unwrap();
+        let (_, pvk) = params_guard.as_ref().unwrap();
+        if params_guard.is_none() {
+            return Ok(HttpResponse::InternalServerError().json("Parameters not initialized"));
+        }
+        // Keep the mutex guard alive until we're done with pvk
+
         println!("PVK pointer: {:p}", pvk);
+
+        println!(
+            "[VERIFY] Decoded public input Fr: {}",
+            hex::encode(fr.to_repr())
+        );
+
+        let params_guard = PARAMS.lock().unwrap();
+        if let Some((params, pvk)) = params_guard.as_ref() {
+            println!("params.vk.alpha_g1:    {:?}", params.vk.alpha_g1);
+            println!("params.vk.beta_g1:     {:?}", params.vk.beta_g1);
+            println!("params.vk.beta_g2:     {:?}", params.vk.beta_g2);
+            // Don't access private fields of PreparedVerifyingKey
+            // Add more as needed...
+        }
+
         let verification_result = verify_proof(&pvk, &proof, &public_input);
+
+        println!("[VERIFY] Verification result: {:?}", verification_result);
+
         match verification_result {
             Ok(true) => {
                 println!("Proof verified? true");
@@ -352,6 +584,34 @@ async fn verify_proof_endpoint(
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    init_params();
+    println!("=== ZK Proof Service ===");
+    println!("Loading SNARK parameters...");
+    let hash_path = "zkp-params/params.circuit_hash";
+
+    // Read the circuit_hash file, if present
+    match fs::read(hash_path) {
+        Ok(bytes) => {
+            println!("circuit_hash from file: {}", hex::encode(&bytes));
+        }
+        Err(e) => {
+            eprintln!("Error reading circuit_hash: {}", e);
+        }
+    }
+
+    match std::fs::read(hash_path) {
+        Ok(bytes) => println!("FILE circuit_hash: {}", hex::encode(bytes)),
+        Err(e) => println!("Couldn't read params.circuit_hash: {}", e),
+    }
+
+    // Compute the hash according to your circuit_hash() function
+    let mut hasher = Sha256::new();
+    hasher.update(b"poseidon-merkle-circuit-v1");
+    hasher.update(b"MERKLE_PATH_LEN");
+    hasher.update(&MERKLE_PATH_LEN.to_le_bytes());
+    let expected_hash = hasher.finalize();
+    println!("circuit_hash from code:  {}", hex::encode(&expected_hash));
+    println!("CODE circuit_hash: {}", hex::encode(circuit_hash()));
     println!("🚀 Starting Zero-Knowledge Proof service on http://localhost:8080");
     HttpServer::new(|| {
         App::new()

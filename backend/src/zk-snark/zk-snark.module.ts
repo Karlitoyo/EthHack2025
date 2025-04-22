@@ -6,12 +6,12 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Patient } from '../patients/patient.entity';
 import { Hospital } from '../hospitals/hospital.entity';
 import { PatientService } from 'src/patients/patients';
-
+import { MerkleService } from '../merkle/merkle.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Patient, Hospital]),
   ],
-  providers: [ZkSnarkService, PatientService],
+  providers: [ZkSnarkService, PatientService, MerkleService],
   controllers: [ZkSnarkController],
   exports: [ZkSnarkService],    
 })
