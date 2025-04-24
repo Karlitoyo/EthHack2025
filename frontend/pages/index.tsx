@@ -1,5 +1,5 @@
 import Layout from "../components/Layout";
-import ZKComponent from "../components/homePage/Homepage";
+import ZKComponent from "../components/patientPage/Patientpage";
 
 const IndexPage = () => (
   <Layout title="Home | Next.js + TypeScript Example">

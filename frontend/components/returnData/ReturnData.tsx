@@ -63,6 +63,7 @@ export default function TreatmentSearch() {
                                                             {patient.firstName} {patient.lastName}
                                                         </h5>
                                                         <div className="text-sm">
+                                                            <p><span className="font-medium">Patient ID:</span> {patient.id}</p>
                                                             <p><span className="font-medium">Age:</span> {patient.age}</p>
                                                             <p><span className="font-medium">Email:</span> {patient.email}</p>
                                                             <p><span className="font-medium">Phone:</span> {patient.phone}</p>

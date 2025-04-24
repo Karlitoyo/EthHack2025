@@ -12,14 +12,15 @@ use lazy_static::lazy_static;
 use neptune::circuit::poseidon_hash;
 use neptune::poseidon::{Poseidon, PoseidonConstants};
 use rand::rngs::OsRng;
+use ring::digest;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::Mutex;
 use typenum::U3;
+use sha2::{Digest, Sha256};
 
 pub const MERKLE_PATH_LEN: usize = 3; // For a tree with 16 leaves
 
@@ -296,12 +297,48 @@ async fn generate_proof(input: web::Json<ProofRequest>) -> impl Responder {
         println!("  [{:2}] {}", i, h);
     }
     // ----- Merkle Root Logging -----
-    println!("Merkle Root (hex): {}", input.merkle_root);
     // -------------------------------
     println!("--- PROOF REQUEST ---");
     println!("Patient fields: {:?}", input);
     println!("Merkle path (input): {:?}", input.merkle_path);
     println!("Merkle root (input): {:?}", input.merkle_root);
+    println!("HOSTNAME: {:?}", hostname::get());
+    println!(
+        "BUILD: {}",
+        std::env::var("VERGEN_GIT_SHA").unwrap_or_else(|_| "development".to_string())
+    );
+    println!(
+        "Binary hash: {}",
+        hex::encode(
+            std::fs::read("/proc/self/exe")
+                .ok()
+                .map(|b| digest::digest(&digest::SHA256, &b).as_ref().to_vec())
+                .unwrap_or_default()
+        )
+    );
+    println!("circuit_hash: {}", hex::encode(circuit_hash()));
+    // let params_guard = PARAMS.lock().unwrap();
+    // if let Some((params, _)) = params_guard.as_ref() {
+    //     println!("VK IC length: {}", params.vk.ic.len());
+    //     println!("Num public inputs: {}", params.vk.ic.len() - 1);
+    //     println!("VK alpha_g1 {:?}", params.vk.alpha_g1);
+    //     // Use a different approach to get a unique representation of the verification key
+    //     use sha2::{Digest, Sha256};
+    //     let vk_repr = format!("{:?}", params.vk);
+    //     let vk_hash = Sha256::digest(vk_repr.as_bytes());
+    //     println!("VK hash (SHA-256): {}", hex::encode(&vk_hash));
+    // }
+
+    use sha2::{Digest, Sha256};
+    use std::fs;
+
+    println!("Binary hash: {}", {
+        match fs::read("/app/zksnark_service") {
+            Ok(bin) => format!("{:x}", Sha256::digest(&bin)),
+            Err(e) => format!("(error reading binary: {})", e),
+        }
+    });
+    print_params_hash("zkp-params/groth16_params.bin");
 
     // Check merkle path length
     if input.merkle_path.len() != MERKLE_PATH_LEN {
@@ -440,16 +477,6 @@ async fn generate_proof(input: web::Json<ProofRequest>) -> impl Responder {
         }
     };
 
-    let params_guard = PARAMS.lock().unwrap();
-    if let Some((params, _pvk)) = params_guard.as_ref() {
-        println!("params.vk.alpha_g1:    {:?}", params.vk.alpha_g1);
-        println!("params.vk.beta_g1:     {:?}", params.vk.beta_g1);
-        println!("params.vk.beta_g2:     {:?}", params.vk.beta_g2);
-        // Don't access private fields of PreparedVerifyingKey
-        // Add more as needed...
-    }
-
-
     let mut proof_bytes: Vec<u8> = vec![];
     proof.write(&mut proof_bytes).unwrap();
 
@@ -509,6 +536,43 @@ async fn verify_proof_endpoint(
         hex::encode(&proof_data.public_input)
     );
 
+    println!("HOSTNAME: {:?}", std::env::var("HOSTNAME"));
+    println!(
+        "BUILD: {}",
+        std::env::var("VERGEN_GIT_SHA").unwrap_or_else(|_| "development".to_string())
+    );
+
+    println!("HOSTNAME: {:?}", hostname::get());
+    println!("Binary hash: {}", {
+        use sha2::{Digest, Sha256};
+        match std::fs::read("/proc/self/exe") {
+            Ok(bin) => hex::encode(Sha256::digest(&bin)),
+            Err(_) => "unavailable".to_string(),
+        }
+    });
+    print_params_hash("zkp-params/groth16_params.bin");
+    println!("circuit_hash: {}", hex::encode(circuit_hash()));
+    let params_guard = PARAMS.lock().unwrap();
+    if let Some((params, _)) = params_guard.as_ref() {
+        println!("VK IC length: {}", params.vk.ic.len());
+        println!("Num public inputs: {}", params.vk.ic.len() - 1);
+        println!("VK alpha_g1 {:?}", params.vk.alpha_g1);
+        // Use a different approach to get a unique representation of the verification key
+        use sha2::{Digest, Sha256};
+        let vk_repr = format!("{:?}", params.vk);
+        let vk_hash = Sha256::digest(vk_repr.as_bytes());
+        println!("VK hash (SHA-256): {}", hex::encode(&vk_hash));
+    }
+
+
+    // println!("Binary hash: {}", {
+    //     match fs::read("/app/zksnark_service") {
+    //         Ok(bin) => format!("{:x}", Sha256::digest(&bin)),
+    //         Err(e) => format!("(error reading binary: {})", e),
+    //     }
+    // });
+    // print_params_hash("zkp-params/groth16_params.bin");
+
     print_params_hash("zkp-params/groth16_params.bin");
     // Parse proof
     let proof: Proof<Bls12> = match Proof::<Bls12>::read(&mut Cursor::new(&proof_data.proof)) {
@@ -531,7 +595,7 @@ async fn verify_proof_endpoint(
         println!("Decoded public input as Fr: {:?}", fr.to_repr());
         let public_input = vec![fr];
         // Load params and verify
-        let params_guard = PARAMS.lock().unwrap();
+
         if params_guard.is_none() {
             return Ok(HttpResponse::InternalServerError().json("Parameters not initialized"));
         }
@@ -541,23 +605,11 @@ async fn verify_proof_endpoint(
         }
         // Keep the mutex guard alive until we're done with pvk
 
-        println!("PVK pointer: {:p}", pvk);
-
-        println!(
-            "[VERIFY] Decoded public input Fr: {}",
-            hex::encode(fr.to_repr())
-        );
-
-        let params_guard = PARAMS.lock().unwrap();
-        if let Some((params, pvk)) = params_guard.as_ref() {
-            println!("params.vk.alpha_g1:    {:?}", params.vk.alpha_g1);
-            println!("params.vk.beta_g1:     {:?}", params.vk.beta_g1);
-            println!("params.vk.beta_g2:     {:?}", params.vk.beta_g2);
-            // Don't access private fields of PreparedVerifyingKey
-            // Add more as needed...
-        }
-
+        use std::time::Instant;
+        let now = Instant::now();
+        println!("Calling verify_proof...");
         let verification_result = verify_proof(&pvk, &proof, &public_input);
+        println!("verify_proof returned in {} ms", now.elapsed().as_millis());
 
         println!("[VERIFY] Verification result: {:?}", verification_result);
 
@@ -613,6 +665,10 @@ async fn main() -> std::io::Result<()> {
     println!("circuit_hash from code:  {}", hex::encode(&expected_hash));
     println!("CODE circuit_hash: {}", hex::encode(circuit_hash()));
     println!("🚀 Starting Zero-Knowledge Proof service on http://localhost:8080");
+    println!(
+        "BUILD: {}",
+        std::env::var("VERGEN_GIT_SHA").unwrap_or_else(|_| "development".to_string())
+    ); // Fetch at runtime
     HttpServer::new(|| {
         App::new()
             .service(generate_proof)

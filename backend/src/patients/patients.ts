@@ -92,7 +92,7 @@ export class PatientService {
         location: hospital.location,
         treatment: hospital.treatment,
         patients: relatedPatients.map((p) => ({
-          id: p.id,
+          id: p.patientId,
           firstName: p.firstName,
           lastName: p.lastName,
           age: p.age,

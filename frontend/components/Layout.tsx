@@ -18,8 +18,8 @@ const Layout = ({ children, title = "This is the default title" }: Props) => (
       <nav className="navbar bg-base-100 rounded-box shadow-md">
         <div className="navbar-start">
           <ul className="menu menu-horizontal px-1">
-            <li><Link href="/" className="btn btn-ghost normal-case text-xl">Home</Link></li>
-            <li><Link href="/about" className="btn btn-ghost normal-case text-xl">About</Link></li>
+            <li><Link href="/" className="btn btn-ghost normal-case text-xl">Patient</Link></li>
+            <li><Link href="/hospital" className="btn btn-ghost normal-case text-xl">Hospital</Link></li>
             <li><Link href="/returnData" className="btn btn-ghost normal-case text-xl">Return Data</Link></li>
             <li><Link href="/generateProof" className="btn btn-ghost normal-case text-xl">Generate Proof</Link></li>
             <li><Link href="/validateProof" className="btn btn-ghost normal-case text-xl">Validate Proof</Link></li>

@@ -61,7 +61,7 @@ const ZKComponent = () => {
         <div className="flex flex-col items-center justify-center min-h-screen bg-base-200 p-4">
             <div className="card w-full max-w-lg bg-base-100 shadow-xl">
                 <div className="card-body">
-                    <h1 className="card-title text-2xl font-bold">ZK-SNARK Example</h1>
+                    <h1 className="card-title text-2xl font-bold">ZK-SNARK Medical Records</h1>
                     <p className="mb-4">Generate Patient Record.</p>
 
                     <form className="space-y-4">
