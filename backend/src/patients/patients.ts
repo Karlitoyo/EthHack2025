@@ -119,31 +119,19 @@ export class PatientService {
     if (!patient) throw new Error('Patient not found');
     const hospital = patient.hospital;
     if (!hospital || !hospital.hospitalId) throw new Error('Bad hospital');
-
-    // 2. Collect all included patients (with hospital joined)
-    const allPatients = await this.patientRepository.find({
-      relations: ['hospital'],
-    });
-
-    // 3. Prepare leaf rows for the tree
+    // 2. Collect all included patients
+    const allPatients = await this.patientRepository.find({ relations: ['hospital'] });
+    // 3. Prepare leaf rows
     const patientRows = allPatients
       .map(toMerklePatientRow)
       .filter((row) => row.hospital_id && row.treatment && row.patient_id);
-
-    // Warn if filtering happened
-    if (patientRows.length !== allPatients.length) {
-      console.warn(
-        '[WARN] Excluded patients with missing data from Merkle proof set!',
-      );
-    }
-
-    // 4. The patient you want to prove
+    // 4. The query patient
     const queryPatient = toMerklePatientRow(patient);
-
+    // ---- ensure your MerkleManager is ready ----
+    await this.merkleManager.ready; // only needed if using async init (see above)
     // 5. Get Merkle proof
     const proof = await this.merkleManager.getProof(patientRows, queryPatient);
-
-    // 6. Prepare payload for Rust service
+    // 6. Prepare Rust payload
     const payload = {
       ...queryPatient,
       merkle_leaf_index: proof.merkle_leaf_index,
@@ -151,8 +139,7 @@ export class PatientService {
       merkle_root: proof.merkle_root,
     };
     console.log(JSON.stringify(payload, null, 2));
-
-    // 6. POST to Rust ZKP microservice
+    // 7. POST to Rust ZKP microservice
     const rustUrl = `${this.baseUrl}/generate-proof`;
     const response = await fetch(rustUrl, {
       method: 'POST',
@@ -161,11 +148,8 @@ export class PatientService {
     });
     if (!response.ok) {
       const errorBody = await response.text();
-      throw new Error(
-        `Rust microservice error: ${response.status}: ${errorBody}`,
-      );
+      throw new Error(`Rust microservice error: ${response.status}: ${errorBody}`);
     }
-    // Assuming Rust returns JSON
     return await response.json();
   }
 }

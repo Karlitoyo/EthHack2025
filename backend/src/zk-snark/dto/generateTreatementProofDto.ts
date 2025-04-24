@@ -3,8 +3,7 @@ export class GenerateTreatmentProofDto {
     treatment: string;
   }
   
-  // dto/verify-proof.dto.ts
   export class VerifyProofDto {
     proof: number[];
-    public_input: number[];
+    public_inputs: number[][]; // WAS: public_input: number[];
   }

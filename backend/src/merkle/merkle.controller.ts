@@ -2,7 +2,6 @@
 import { Controller, Post, Body, Get } from '@nestjs/common';
 import { MerkleService } from './merkle.service';
 import { PatientRow } from './interfaces/merkleTree';
-import { toHex32Buf } from './utils';
 
 @Controller('merkle')
 export class MerkleController {

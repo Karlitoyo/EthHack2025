@@ -32,25 +32,19 @@ export class ZkSnarkService {
     return res.json();
   }
 
-  // zk-snark.service.ts
   async verifyProof({
     proof,
-    public_input,
+    public_inputs,
   }: {
     proof: number[];
-    public_input: number[];
+    public_inputs: number[][];
   }) {
     const res = await fetch(`${this.baseUrl}/verify-proof`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ proof, public_input }),
+      body: JSON.stringify({ proof, public_inputs }),
     });
-    console.log('PROOF sz', proof.length, proof.slice(0, 8));
-    console.log(
-      'PUBLIC_INPUT sz',
-      public_input.length,
-      public_input.slice(0, 8),
-    );
+    // ...logging etc.
     if (!res.ok) throw new Error(`ZKP verification error: ${res.status}`);
     return res.json();
   }

@@ -15,12 +15,12 @@ use rand::rngs::OsRng;
 use ring::digest;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::Mutex;
 use typenum::U3;
-use sha2::{Digest, Sha256};
 
 pub const MERKLE_PATH_LEN: usize = 3; // For a tree with 16 leaves
 
@@ -37,7 +37,7 @@ pub struct ProofRequest {
 #[derive(Serialize, Deserialize)]
 pub struct ProofResponse {
     proof: Vec<u8>,
-    public_input: Vec<u8>,
+    public_inputs: Vec<Vec<u8>>, // Each public input is a 32-byte array
 }
 
 #[derive(Clone)]
@@ -284,24 +284,18 @@ lazy_static! {
 
 #[post("/generate-proof")]
 async fn generate_proof(input: web::Json<ProofRequest>) -> impl Responder {
-    // ========== Input Logging ==========
+    // Logging input
     println!("\n--- Incoming ProofRequest ---");
     println!("hospital_id: {:?}", input.hospital_id);
     println!("treatment:   {:?}", input.treatment);
     println!("patient_id:  {:?}", input.patient_id);
     println!("merkle_leaf_index: {}", input.merkle_leaf_index);
     print_params_hash("zkp-params/groth16_params.bin");
-    // ----- Merkle Path Logging -----
     println!("Merkle Path (hex):");
     for (i, h) in input.merkle_path.iter().enumerate() {
         println!("  [{:2}] {}", i, h);
     }
-    // ----- Merkle Root Logging -----
-    // -------------------------------
-    println!("--- PROOF REQUEST ---");
-    println!("Patient fields: {:?}", input);
-    println!("Merkle path (input): {:?}", input.merkle_path);
-    println!("Merkle root (input): {:?}", input.merkle_root);
+    println!("Merkle Root (hex): {}", input.merkle_root);
     println!("HOSTNAME: {:?}", hostname::get());
     println!(
         "BUILD: {}",
@@ -309,35 +303,12 @@ async fn generate_proof(input: web::Json<ProofRequest>) -> impl Responder {
     );
     println!(
         "Binary hash: {}",
-        hex::encode(
-            std::fs::read("/proc/self/exe")
-                .ok()
-                .map(|b| digest::digest(&digest::SHA256, &b).as_ref().to_vec())
-                .unwrap_or_default()
-        )
-    );
-    println!("circuit_hash: {}", hex::encode(circuit_hash()));
-    // let params_guard = PARAMS.lock().unwrap();
-    // if let Some((params, _)) = params_guard.as_ref() {
-    //     println!("VK IC length: {}", params.vk.ic.len());
-    //     println!("Num public inputs: {}", params.vk.ic.len() - 1);
-    //     println!("VK alpha_g1 {:?}", params.vk.alpha_g1);
-    //     // Use a different approach to get a unique representation of the verification key
-    //     use sha2::{Digest, Sha256};
-    //     let vk_repr = format!("{:?}", params.vk);
-    //     let vk_hash = Sha256::digest(vk_repr.as_bytes());
-    //     println!("VK hash (SHA-256): {}", hex::encode(&vk_hash));
-    // }
-
-    use sha2::{Digest, Sha256};
-    use std::fs;
-
-    println!("Binary hash: {}", {
-        match fs::read("/app/zksnark_service") {
-            Ok(bin) => format!("{:x}", Sha256::digest(&bin)),
+        match std::fs::read("/proc/self/exe") {
+            Ok(bin) => hex::encode(sha2::Sha256::digest(&bin)),
             Err(e) => format!("(error reading binary: {})", e),
         }
-    });
+    );
+    println!("circuit_hash: {}", hex::encode(circuit_hash()));
     print_params_hash("zkp-params/groth16_params.bin");
 
     // Check merkle path length
@@ -349,15 +320,11 @@ async fn generate_proof(input: web::Json<ProofRequest>) -> impl Responder {
         ));
     }
 
-    println!("--- check endpoints gen-prof ---\n");
-    print_params_hash("zkp-params/groth16_params.bin");
-
-    // Map patient fields
+    // Map all patient fields to field elements
     let hospital_id_fr = string_to_fr(&input.hospital_id);
     let treatment_fr = string_to_fr(&input.treatment);
     let patient_id_fr = string_to_fr(&input.patient_id);
 
-    // After field conversions:
     println!(
         "Converted hospital_id_fr: {}",
         hex::encode(hospital_id_fr.to_repr())
@@ -371,7 +338,7 @@ async fn generate_proof(input: web::Json<ProofRequest>) -> impl Responder {
         hex::encode(patient_id_fr.to_repr())
     );
 
-    // Poseidon commitment
+    // Poseidon leaf/commitment for public input "preimage_commitment"
     let constants = PoseidonConstants::<Fr, U3>::new();
     let mut poseidon = Poseidon::new(&constants);
     poseidon.input(hospital_id_fr).expect("input hospital");
@@ -379,13 +346,12 @@ async fn generate_proof(input: web::Json<ProofRequest>) -> impl Responder {
     poseidon.input(patient_id_fr).expect("input patient");
     let commitment = poseidon.hash();
 
-    // After Poseidon hash commitment:
     println!(
         "Poseidon leaf/commitment: {}",
         hex::encode(commitment.to_repr())
     );
 
-    // ========== Merkle Path Parsing & Logging ==========
+    // Parse Merkle path
     let mut actual_merkle_path = vec![];
     for (i, hex_sibling) in input.merkle_path.iter().enumerate() {
         println!("Decoding merkle_path[{}]: {}", i, hex_sibling);
@@ -422,7 +388,7 @@ async fn generate_proof(input: web::Json<ProofRequest>) -> impl Responder {
         }
     }
 
-    // ========== Merkle Root Parsing & Logging ==========
+    // Parse Merkle root for public input "merkle_root"
     println!("Parsing Merkle Root...");
     let merkle_root_bytes = match hex::decode(input.merkle_root.trim_start_matches("0x")) {
         Ok(b) => b,
@@ -449,20 +415,26 @@ async fn generate_proof(input: web::Json<ProofRequest>) -> impl Responder {
         return HttpResponse::BadRequest().json("Invalid Fr for merkle_root");
     };
 
-    // ========== Begin ZK Proof ==========
-    let actual_leaf_index = input.merkle_leaf_index;
-    // Path to the CRS (params) file, using the Docker mount
-    let mutex_guard = PARAMS.lock().unwrap();
-    if mutex_guard.is_none() {
+    // Prepare the two public inputs in the same order as circuit alloc_input:
+    // 1. Merkle root (first alloc_input)
+    // 2. Commitment (second alloc_input)
+    let mut root_bytes = [0u8; 32];
+    root_bytes.copy_from_slice(&actual_merkle_root.to_repr());
+    let mut comm_bytes = [0u8; 32];
+    comm_bytes.copy_from_slice(&commitment.to_repr());
+
+    // Generate proof
+    let params_guard = PARAMS.lock().unwrap();
+    if params_guard.is_none() {
         return HttpResponse::InternalServerError().json("Parameters not initialized");
     }
-    let (params, _) = mutex_guard.as_ref().unwrap();
+    let (params, _) = params_guard.as_ref().unwrap();
     let proof = match create_random_proof(
         MyCircuit {
             hospital_id: Some(hospital_id_fr),
             treatment: Some(treatment_fr),
             patient_id: Some(patient_id_fr),
-            leaf_index: Some(actual_leaf_index), // <-- here!
+            leaf_index: Some(input.merkle_leaf_index),
             merkle_path: actual_merkle_path.clone(),
             merkle_root: Some(actual_merkle_root),
             preimage_commitment: Some(commitment),
@@ -477,28 +449,28 @@ async fn generate_proof(input: web::Json<ProofRequest>) -> impl Responder {
         }
     };
 
+    // Serialize the proof
     let mut proof_bytes: Vec<u8> = vec![];
     proof.write(&mut proof_bytes).unwrap();
 
-    // After proof generation:
     println!(
         "Proof bytes (hex, first 16): {}",
         hex::encode(&proof_bytes[..16.min(proof_bytes.len())])
     );
-
-    let mut public_input_bytes: [u8; 32] = [0u8; 32];
-    public_input_bytes.copy_from_slice(&commitment.to_repr());
-
-    println!("Public input bytes: {}", hex::encode(&public_input_bytes));
     println!(
-        "Public input bytes (hex, first 16): {}",
-        hex::encode(&public_input_bytes[..16])
+        "Public input[0] (merkle root): {}",
+        hex::encode(&root_bytes)
     );
+    println!(
+        "Public input[1] (commitment):   {}",
+        hex::encode(&comm_bytes)
+    );
+    println!("Proof: {}", hex::encode(&proof_bytes));
     println!("--- PROOF RESPONSE END ---");
 
     HttpResponse::Ok().json(ProofResponse {
         proof: proof_bytes,
-        public_input: public_input_bytes.to_vec(),
+        public_inputs: vec![root_bytes.to_vec(), comm_bytes.to_vec()], // <----- Correct!
     })
 }
 
@@ -507,74 +479,46 @@ async fn verify_proof_endpoint(
     proof_data: web::Json<ProofResponse>,
 ) -> Result<HttpResponse, actix_web::Error> {
     println!("=== VERIFY PROOF ===");
-    println!("Proof bytes: {:?}", proof_data.proof);
-    println!("Public input bytes: {:?}", proof_data.public_input);
-    println!(
-        "public_input (hex): 0x{}",
-        hex::encode(&proof_data.public_input)
-    );
-    print_params_hash("zkp-params/groth16_params.bin");
-    println!(
-        "Received proof bytes: len={} first8={:?}",
-        proof_data.proof.len(),
-        &proof_data.proof[0..8.min(proof_data.proof.len())]
-    );
-    println!(
-        "Received public_input bytes: len={} first8={:?}",
-        proof_data.public_input.len(),
-        &proof_data.public_input[0..8.min(proof_data.public_input.len())]
-    );
+    // ... diagnostics as before
 
-    println!("--- check endpoints ver-prof ---\n");
-
-    println!(
-        "[VERIFY] Proof bytes: {}",
-        hex::encode(&proof_data.proof[..16.min(proof_data.proof.len())])
-    );
-    println!(
-        "[VERIFY] Public input: {}",
-        hex::encode(&proof_data.public_input)
-    );
-
-    println!("HOSTNAME: {:?}", std::env::var("HOSTNAME"));
-    println!(
-        "BUILD: {}",
-        std::env::var("VERGEN_GIT_SHA").unwrap_or_else(|_| "development".to_string())
-    );
-
-    println!("HOSTNAME: {:?}", hostname::get());
-    println!("Binary hash: {}", {
-        use sha2::{Digest, Sha256};
-        match std::fs::read("/proc/self/exe") {
-            Ok(bin) => hex::encode(Sha256::digest(&bin)),
-            Err(_) => "unavailable".to_string(),
-        }
-    });
-    print_params_hash("zkp-params/groth16_params.bin");
-    println!("circuit_hash: {}", hex::encode(circuit_hash()));
-    let params_guard = PARAMS.lock().unwrap();
-    if let Some((params, _)) = params_guard.as_ref() {
-        println!("VK IC length: {}", params.vk.ic.len());
-        println!("Num public inputs: {}", params.vk.ic.len() - 1);
-        println!("VK alpha_g1 {:?}", params.vk.alpha_g1);
-        // Use a different approach to get a unique representation of the verification key
-        use sha2::{Digest, Sha256};
-        let vk_repr = format!("{:?}", params.vk);
-        let vk_hash = Sha256::digest(vk_repr.as_bytes());
-        println!("VK hash (SHA-256): {}", hex::encode(&vk_hash));
+    // Expect exactly 2 public inputs, both 32-byte arrays
+    if proof_data.public_inputs.len() != 2 {
+        println!(
+            "Invalid number of public inputs: expected 2, got {}",
+            proof_data.public_inputs.len()
+        );
+        return Ok(HttpResponse::BadRequest().json("Expected 2 public inputs"));
     }
+    for (i, inp) in proof_data.public_inputs.iter().enumerate() {
+        if inp.len() != 32 {
+            println!("Public input {} not 32 bytes: {:?}", i, inp);
+            return Ok(
+                HttpResponse::BadRequest().json(format!("Public input {} must be 32 bytes", i))
+            );
+        }
+    }
+    let mut buf0 = [0u8; 32];
+    buf0.copy_from_slice(&proof_data.public_inputs[0][..32]);
+    let mut buf1 = [0u8; 32];
+    buf1.copy_from_slice(&proof_data.public_inputs[1][..32]);
+    let fr0_option = Fr::from_repr(buf0);
+    let fr0 = if fr0_option.is_some().into() {
+        fr0_option.unwrap()
+    } else {
+        println!("Invalid Fr for public input 0");
+        return Ok(HttpResponse::BadRequest().json("Invalid Fr for public input 0"));
+    };
 
+    let fr1_option = Fr::from_repr(buf1);
+    let fr1 = if fr1_option.is_some().into() {
+        fr1_option.unwrap()
+    } else {
+        println!("Invalid Fr for public input 1");
+        return Ok(HttpResponse::BadRequest().json("Invalid Fr for public input 1"));
+    };
+    let public_input = vec![fr0, fr1];
 
-    // println!("Binary hash: {}", {
-    //     match fs::read("/app/zksnark_service") {
-    //         Ok(bin) => format!("{:x}", Sha256::digest(&bin)),
-    //         Err(e) => format!("(error reading binary: {})", e),
-    //     }
-    // });
-    // print_params_hash("zkp-params/groth16_params.bin");
-
-    print_params_hash("zkp-params/groth16_params.bin");
-    // Parse proof
+    // Parse proof as before
     let proof: Proof<Bls12> = match Proof::<Bls12>::read(&mut Cursor::new(&proof_data.proof)) {
         Ok(p) => p,
         Err(e) => {
@@ -582,93 +526,73 @@ async fn verify_proof_endpoint(
             return Ok(HttpResponse::BadRequest().json("Invalid proof format"));
         }
     };
-    // Public input parsing
-    if proof_data.public_input.len() != 32 {
-        println!("Public input not 32 bytes: {:?}", proof_data.public_input);
-        return Ok(HttpResponse::BadRequest().json("Invalid public input length, expected 32"));
-    }
-    let mut buf = [0u8; 32];
-    buf.copy_from_slice(&proof_data.public_input[0..32]);
-    let comm_fr = Fr::from_repr(buf);
-    if comm_fr.is_some().into() {
-        let fr = comm_fr.unwrap();
-        println!("Decoded public input as Fr: {:?}", fr.to_repr());
-        let public_input = vec![fr];
-        // Load params and verify
+    // ... verify as before
+    let params_guard = PARAMS.lock().unwrap();
+    let (_, pvk) = params_guard.as_ref().unwrap();
+    let verification_result = verify_proof(&pvk, &proof, &public_input);
+    // ... respond as before
 
-        if params_guard.is_none() {
-            return Ok(HttpResponse::InternalServerError().json("Parameters not initialized"));
+    // Add timing measurement
+    let now = std::time::Instant::now();
+    println!("verify_proof returned in {} ms", now.elapsed().as_millis());
+
+    println!("[VERIFY] Verification result: {:?}", verification_result);
+    println!("Verifying with public_input[0]: {}", fr0);
+    println!("Verifying with public_input[1]: {}", fr1);
+    println!("Proof: {}", hex::encode(&proof_data.proof));
+
+    match verification_result {
+        Ok(true) => {
+            println!("Proof verified? true");
+            Ok(HttpResponse::Ok().json(json!({"valid": true, "message": "Proof is valid"})))
         }
-        let (_, pvk) = params_guard.as_ref().unwrap();
-        if params_guard.is_none() {
-            return Ok(HttpResponse::InternalServerError().json("Parameters not initialized"));
+        Ok(false) => {
+            println!("Proof verified? false (invalid proof)");
+            Ok(HttpResponse::Ok().json(json!({"valid": false, "message": "Proof is invalid"})))
         }
-        // Keep the mutex guard alive until we're done with pvk
-
-        use std::time::Instant;
-        let now = Instant::now();
-        println!("Calling verify_proof...");
-        let verification_result = verify_proof(&pvk, &proof, &public_input);
-        println!("verify_proof returned in {} ms", now.elapsed().as_millis());
-
-        println!("[VERIFY] Verification result: {:?}", verification_result);
-
-        match verification_result {
-            Ok(true) => {
-                println!("Proof verified? true");
-                Ok(HttpResponse::Ok().json(json!({"valid": true, "message": "Proof is valid"})))
-            }
-            Ok(false) => {
-                println!("Proof verified? false (invalid proof)");
-                Ok(HttpResponse::Ok().json(json!({"valid": false, "message": "Proof is invalid"})))
-            }
-            Err(e) => {
-                println!("Error during proof verification: {:?}", e);
-                Ok(HttpResponse::InternalServerError()
-                    .json(json!({"valid": false, "message": format!("Verifier error: {:?}", e)})))
-            }
+        Err(e) => {
+            println!("Error during proof verification: {:?}", e);
+            Ok(HttpResponse::InternalServerError()
+                .json(json!({"valid": false, "message": format!("Verifier error: {:?}", e)})))
         }
-    } else {
-        println!("Invalid Fr bytes: {:?}", buf);
-        return Ok(HttpResponse::BadRequest().json("Invalid Fr bytes"));
     }
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     init_params();
-    println!("=== ZK Proof Service ===");
-    println!("Loading SNARK parameters...");
-    let hash_path = "zkp-params/params.circuit_hash";
+    // println!("=== ZK Proof Service ===");
+    // println!("Loading SNARK parameters...");
+    // let hash_path = "zkp-params/params.circuit_hash";
 
-    // Read the circuit_hash file, if present
-    match fs::read(hash_path) {
-        Ok(bytes) => {
-            println!("circuit_hash from file: {}", hex::encode(&bytes));
-        }
-        Err(e) => {
-            eprintln!("Error reading circuit_hash: {}", e);
-        }
-    }
+    // // Read the circuit_hash file, if present
+    // match fs::read(hash_path) {
+    //     Ok(bytes) => {
+    //         println!("circuit_hash from file: {}", hex::encode(&bytes));
+    //     }
+    //     Err(e) => {
+    //         eprintln!("Error reading circuit_hash: {}", e);
+    //     }
+    // }
 
-    match std::fs::read(hash_path) {
-        Ok(bytes) => println!("FILE circuit_hash: {}", hex::encode(bytes)),
-        Err(e) => println!("Couldn't read params.circuit_hash: {}", e),
-    }
+    // match std::fs::read(hash_path) {
+    //     Ok(bytes) => println!("FILE circuit_hash: {}", hex::encode(bytes)),
+    //     Err(e) => println!("Couldn't read params.circuit_hash: {}", e),
+    // }
 
-    // Compute the hash according to your circuit_hash() function
-    let mut hasher = Sha256::new();
-    hasher.update(b"poseidon-merkle-circuit-v1");
-    hasher.update(b"MERKLE_PATH_LEN");
-    hasher.update(&MERKLE_PATH_LEN.to_le_bytes());
-    let expected_hash = hasher.finalize();
-    println!("circuit_hash from code:  {}", hex::encode(&expected_hash));
-    println!("CODE circuit_hash: {}", hex::encode(circuit_hash()));
-    println!("🚀 Starting Zero-Knowledge Proof service on http://localhost:8080");
-    println!(
-        "BUILD: {}",
-        std::env::var("VERGEN_GIT_SHA").unwrap_or_else(|_| "development".to_string())
-    ); // Fetch at runtime
+    // // Compute the hash according to your circuit_hash() function
+    // let mut hasher = Sha256::new();
+    // hasher.update(b"poseidon-merkle-circuit-v1");
+    // hasher.update(b"MERKLE_PATH_LEN");
+    // hasher.update(&MERKLE_PATH_LEN.to_le_bytes());
+    // let expected_hash = hasher.finalize();
+    // println!("circuit_hash from code:  {}", hex::encode(&expected_hash));
+    // println!("CODE circuit_hash: {}", hex::encode(circuit_hash()));
+    // println!("🚀 Starting Zero-Knowledge Proof service on http://localhost:8080");
+    // println!(
+    //     "BUILD: {}",
+    //     std::env::var("VERGEN_GIT_SHA").unwrap_or_else(|_| "development".to_string())
+    // ); // Fetch at runtime
     HttpServer::new(|| {
         App::new()
             .service(generate_proof)

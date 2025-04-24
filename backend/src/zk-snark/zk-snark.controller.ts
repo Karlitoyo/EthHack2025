@@ -1,30 +1,37 @@
 import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
 import { ZkSnarkService } from './zk-snark.service';
-import { GenerateTreatmentProofDto, VerifyProofDto } from './dto/generateTreatementProofDto';
 import { PatientService } from '../patients/patients';
+import { MerkleManager } from '../merkle/tree'; // adjust the import!
+import { GenerateTreatmentProofDto, VerifyProofDto } from './dto/generateTreatementProofDto';
 
 @Controller('zk-snark')
 export class ZkSnarkController {
   constructor(
     private readonly zkSnarkService: ZkSnarkService,
-    private readonly patientService: PatientService,
+    private readonly patientService: PatientService
   ) {}
 
   @Post('generate-proof')
   async generateProof(@Body() dto: GenerateTreatmentProofDto) {
     if (!dto.patientId || !dto.treatment) {
-      throw new BadRequestException('patientId and treatment are required');
+      throw new BadRequestException('patientId, treatment, and hospitalId are required');
     }
+    // Call the service as before
     return await this.patientService.generateTreatmentProof(dto.patientId, dto.treatment);
   }
 
   @Post('verify-proof')
   async verifyProof(@Body() dto: VerifyProofDto) {
-    if (!dto.proof || !dto.public_input) {
-      throw new BadRequestException('Proof and public input are required');
+    if (!Array.isArray(dto.public_inputs) || dto.public_inputs.length !== 2) {
+      throw new BadRequestException('public_inputs must be a 2-element array');
     }
-    if (dto.public_input.length !== 32) {
-      throw new BadRequestException('Public input must be exactly one 32-byte element');
+    if (
+      !Array.isArray(dto.public_inputs[0]) ||
+      dto.public_inputs[0].length !== 32 ||
+      !Array.isArray(dto.public_inputs[1]) ||
+      dto.public_inputs[1].length !== 32
+    ) {
+      throw new BadRequestException('Each element of public_inputs must be 32 bytes');
     }
     return await this.zkSnarkService.verifyProof(dto); // Pass-through to ZKP service
   }

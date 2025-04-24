@@ -2,6 +2,7 @@
 import { createHash } from 'crypto';
 import { Patient } from '../patients/patient.entity';
 import * as circomlibjs from "circomlibjs";
+import { PatientRow } from './interfaces/merkleTree';
 
 export const BLS12_381_FR = BigInt(
   '0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001'
@@ -19,12 +20,16 @@ export function stringToFrBytes(s: string): Buffer {
   return Buffer.from(hex, 'hex');
 }
 
-export function stringToFrBigInt(s: string): BigInt {
+export function stringToFrBigInt(s: string): bigint {
   if (!s || typeof s !== 'string') throw new Error("Field string cannot be empty");
+  if (!s || typeof s !== 'string') {
+    throw new Error(`Field string must be nonempty string, got: '${s}' (${typeof s})`);
+  }
   const hash = createHash('sha256').update(Buffer.from(s, 'utf8')).digest();
   const hashInt = BigInt('0x' + hash.toString('hex'));
   return hashInt % FIELD_MODULUS;
 }
+
 
 export function bigIntToBuffer(bi: BigInt): Buffer {
   let hex = bi.toString(16);
@@ -38,11 +43,19 @@ export function toHex32Buf(buf: Buffer): string {
   return '0x' + buf.toString('hex');
 }
 
-export function toMerklePatientRow(p: Patient) {
+export function toMerklePatientRow(p: Patient): PatientRow | null {
+  if (!p.hospital?.hospitalId) {
+    console.warn("Skipping patient with missing hospital/hospitalId", p);
+    return null;
+  }
+  if (!p.treatment || !p.patientId) {
+    console.warn("Skipping patient missing treatment or patientId", p);
+    return null;
+  }
   return {
-    hospital_id: p.hospital?.hospitalId ?? '',
-    treatment: p.treatment,
-    patient_id: p.patientId,
+    hospital_id: String(p.hospital.hospitalId),
+    treatment: String(p.treatment),
+    patient_id: String(p.patientId),
   };
 }
 
@@ -76,16 +89,23 @@ export function assertIs32ByteHex(label: string, value: string) {
   }
 }
 
-export function ensureBigInt(val: any): BigInt {
-  if (typeof val === 'bigint') return val;
-  if (typeof val === 'number') return BigInt(val);
-  // If Buffer or Uint8Array, parse as hex string to BigInt
-  if (val instanceof Uint8Array || Buffer.isBuffer(val)) {
-    return BigInt('0x' + Buffer.from(val).toString('hex'));
+export function ensureBigInt(x: any): bigint {
+  if (typeof x === 'bigint') return x;
+  if (typeof x === 'number') return BigInt(x);
+  if (typeof x === 'string') return BigInt(x);
+
+  // Accept Node.js Buffer
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer(x)) {
+    return BigInt('0x' + x.toString('hex'));
   }
-  // Some poseidon libs return object with .toString("dec") → force decimal string to BigInt
-  if (val && typeof val.toString === 'function' && /^[0-9]+$/.test(val.toString())) {
-    return BigInt(val.toString());
+  // Accept Uint8Array or any TypedArray (such as from crypto, DB, web)
+  if (x instanceof Uint8Array || (ArrayBuffer.isView(x) && 'BYTES_PER_ELEMENT' in x && x.BYTES_PER_ELEMENT === 1)) {
+    return BigInt('0x' + Buffer.from(x.buffer, x.byteOffset, x.byteLength).toString('hex'));
   }
-  throw new Error('Cannot coerce value to BigInt: ' + val);
+  // Accept raw [number, number, ...]
+  if (Array.isArray(x) && x.length > 0 && typeof x[0] === 'number') {
+    return BigInt('0x' + Buffer.from(x).toString('hex'));
+  }
+
+  throw new Error('Cannot coerce value to BigInt: ' + JSON.stringify(x));
 }
