@@ -1,3 +1,4 @@
+// Place this at the top
 use actix_web::{post, web, App, HttpResponse, HttpServer, Responder};
 use bellperson::gadgets::boolean::Boolean;
 use bellperson::gadgets::num::AllocatedNum;
@@ -12,16 +13,13 @@ use lazy_static::lazy_static;
 use neptune::circuit::poseidon_hash;
 use neptune::poseidon::{Poseidon, PoseidonConstants};
 use rand::rngs::OsRng;
-use ring::digest;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::Mutex;
-use typenum::U3;
-
+use typenum::{U3, U2};
 pub const MERKLE_PATH_LEN: usize = 3; // For a tree with 16 leaves
 
 #[derive(Deserialize, Debug)]
@@ -51,23 +49,10 @@ pub struct MyCircuit {
     pub preimage_commitment: Option<Fr>,
 }
 
-// Produces a hash identifying the circuit version/configuration for param binding
-fn circuit_hash() -> Vec<u8> {
-    use sha2::{Digest, Sha256};
-    // Compose anything that would change if the circuit changes!
-    let mut hasher = Sha256::new();
-    hasher.update(b"poseidon-merkle-circuit-v1"); // Change this if you change logic!
-    hasher.update(b"MERKLE_PATH_LEN");
-    hasher.update(&MERKLE_PATH_LEN.to_le_bytes());
-    // Add signature of any other circuit 'shape' constants here!
-    hasher.finalize().to_vec()
-}
-
 fn string_to_fr(s: &str) -> blstrs::Scalar {
     use blstrs::Scalar as Fr;
     use num_bigint::BigUint;
     use sha2::{Digest, Sha256};
-
     let hash = Sha256::digest(s.as_bytes());
     let hash_int = BigUint::from_bytes_be(&hash);
     // Use a hardcoded modulus if MODULUS is a string
@@ -89,7 +74,6 @@ fn string_to_fr(s: &str) -> blstrs::Scalar {
 
 fn print_params_hash(path: &str) {
     use sha2::{Digest, Sha256};
-    use std::fs;
     if let Ok(bytes) = fs::read(path) {
         let hash = Sha256::digest(&bytes);
         println!("PARAMS FILE: {} HASH: {:x}", path, hash);
@@ -98,21 +82,27 @@ fn print_params_hash(path: &str) {
     }
 }
 
+fn circuit_hash() -> Vec<u8> {
+    use sha2::{Digest, Sha256};
+    // Compose anything that would change if the circuit changes!
+    let mut hasher = Sha256::new();
+    hasher.update(b"poseidon-merkle-circuit-v3"); // Bump this for changes!
+    hasher.update(b"MERKLE_PATH_LEN");
+    hasher.update(&MERKLE_PATH_LEN.to_le_bytes());
+    hasher.finalize().to_vec()
+}
+
 fn init_params() {
     let params_path = "zkp-params/groth16_params.bin";
     let hash_path = "zkp-params/params.circuit_hash";
     let expected_hash = circuit_hash();
     let params;
-
     // Check if params file exists
     if Path::new(params_path).exists() {
         println!("Loading SNARK parameters from file...");
-        // Load params
         let mut fp = fs::File::open(params_path).expect("Failed to open Groth16 params file");
         params = bellperson::groth16::Parameters::<Bls12>::read(&mut fp, false)
             .expect("Failed to read Groth16 parameters");
-
-        // Load/write/check circuit hash file
         if Path::new(hash_path).exists() {
             let got_hash = fs::read(hash_path).expect("Cannot read circuit hash file");
             if got_hash != expected_hash {
@@ -125,7 +115,6 @@ fn init_params() {
                 println!("✔️  Circuit hash matches: {}", hex::encode(&expected_hash));
             }
         } else {
-            // Legacy: hash file missing—write it now
             fs::write(hash_path, &expected_hash).expect("Failed to write circuit hash");
             println!(
                 "Wrote missing circuit hash for params: {}",
@@ -133,7 +122,6 @@ fn init_params() {
             );
         }
     } else {
-        // Params file does not exist—run trusted setup
         println!("groth16_params.bin not found, running trusted setup to create it");
         fs::create_dir_all("zkp-params").expect("Could not create parameter output directory");
         params = generate_random_parameters::<Bls12, _, _>(
@@ -149,8 +137,6 @@ fn init_params() {
             &mut OsRng,
         )
         .expect("parameter generation failed");
-
-        // Save params and circuit hash
         let mut fp = fs::File::create(params_path).expect("Could not create params file");
         params.write(&mut fp).expect("Failed to write params");
         fs::write(hash_path, &expected_hash).expect("Failed to write circuit hash");
@@ -161,19 +147,18 @@ fn init_params() {
             hex::encode(&expected_hash)
         );
     }
-
-    // Always log
     println!("CODE circuit_hash:  {}", hex::encode(&expected_hash));
     match fs::read(hash_path) {
         Ok(bytes) => println!("FILE circuit_hash:  {}", hex::encode(bytes)),
         Err(e) => println!("(Couldn't read params.circuit_hash: {})", e),
     }
     print_params_hash(params_path);
-
     let pvk = prepare_verifying_key(&params.vk);
     *PARAMS.lock().unwrap() = Some((params, pvk));
 }
 
+
+/// === CRITICAL FIX: Merkle node hash must use U2 (arity-2) in-circuit ===
 impl Circuit<Fr> for MyCircuit {
     fn synthesize<CS: ConstraintSystem<Fr>>(self, cs: &mut CS) -> Result<(), SynthesisError> {
         // 1. Allocate secret preimage values (hospital, treatment, patient)
@@ -186,18 +171,16 @@ impl Circuit<Fr> for MyCircuit {
         let patient_id = AllocatedNum::alloc(cs.namespace(|| "patient_id"), || {
             self.patient_id.ok_or(SynthesisError::AssignmentMissing)
         })?;
-
-        // 2. Poseidon hash the tuple as the leaf hash
+        // 2. Poseidon hash the tuple as the leaf hash: U3!
         let poseidon_constants = PoseidonConstants::<Fr, U3>::new();
         let leaf = poseidon_hash(
             cs.namespace(|| "poseidon_leaf"),
             vec![hospital_id.clone(), treatment.clone(), patient_id.clone()],
             &poseidon_constants,
         )?;
-
         // 3. Merkle path: Prove leaf is in tree with public root
-        // Allocate path elements (sibling hashes)
         let mut cur_hash = leaf.clone();
+
         let path = self
             .merkle_path
             .iter()
@@ -208,14 +191,13 @@ impl Circuit<Fr> for MyCircuit {
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
-
-        // Allocate leaf index bits for direction
         let index = self.leaf_index.unwrap_or(0);
         let mut leaf_index_bits = Vec::new();
         for i in 0..path.len() {
             leaf_index_bits.push((index >> i) & 1 == 1);
         }
 
+        // <== MAIN FIX: Hash w/ U2 not U3!
         // Traverse up the tree
         for (i, (sibling, bit)) in path.iter().zip(leaf_index_bits.iter()).enumerate() {
             let (left, right) = if *bit {
@@ -226,16 +208,20 @@ impl Circuit<Fr> for MyCircuit {
             cur_hash = poseidon_hash(
                 cs.namespace(|| format!("merkle_hash_up_{}", i)),
                 vec![left.clone(), right.clone()],
-                &PoseidonConstants::<Fr, U3>::new(),
+                &PoseidonConstants::<Fr, U2>::new(),    // <-- USE U2 FOR NODES
             )?;
+            // Diagnostic
+            println!(
+                "CIRCUIT: After round {}: cur_hash = {:?}",
+                i,
+                cur_hash.get_value()
+            );
         }
-
         // Allocate Merkle root as public input
         let root_var = cs.alloc_input(
             || "merkle root",
             || self.merkle_root.ok_or(SynthesisError::AssignmentMissing),
         )?;
-
         // Enforce computed root == public input
         cs.enforce(
             || "tree path leads to public root",
@@ -243,6 +229,20 @@ impl Circuit<Fr> for MyCircuit {
             |lc| lc + CS::one(),
             |lc| lc + root_var,
         );
+        // Final circuit diagnostic printout for comparison
+        if let Some(final_hash) = cur_hash.get_value() {
+            println!(
+                "(Hex) In-circuit Merkle root: {}",
+                hex::encode(final_hash.to_repr())
+            );
+            if let Some(expected) = self.merkle_root {
+                // Diagnostic equality
+                println!(
+                    "(Match off-circuit root?) {}",
+                    final_hash == expected
+                );
+            }
+        }
 
         // 4. Range check: patient_id < 2^20
         let bits: Vec<Boolean> = patient_id.to_bits_le(cs.namespace(|| "patient_id_bits"))?;
@@ -285,58 +285,16 @@ lazy_static! {
 #[post("/generate-proof")]
 async fn generate_proof(input: web::Json<ProofRequest>) -> impl Responder {
     // Logging input
-    println!("\n--- Incoming ProofRequest ---");
+    println!("--- Incoming ProofRequest ---");
     println!("hospital_id: {:?}", input.hospital_id);
     println!("treatment:   {:?}", input.treatment);
     println!("patient_id:  {:?}", input.patient_id);
     println!("merkle_leaf_index: {}", input.merkle_leaf_index);
-    print_params_hash("zkp-params/groth16_params.bin");
-    println!("Merkle Path (hex):");
-    for (i, h) in input.merkle_path.iter().enumerate() {
-        println!("  [{:2}] {}", i, h);
-    }
-    println!("Merkle Root (hex): {}", input.merkle_root);
-    println!("HOSTNAME: {:?}", hostname::get());
-    println!(
-        "BUILD: {}",
-        std::env::var("VERGEN_GIT_SHA").unwrap_or_else(|_| "development".to_string())
-    );
-    println!(
-        "Binary hash: {}",
-        match std::fs::read("/proc/self/exe") {
-            Ok(bin) => hex::encode(sha2::Sha256::digest(&bin)),
-            Err(e) => format!("(error reading binary: {})", e),
-        }
-    );
-    println!("circuit_hash: {}", hex::encode(circuit_hash()));
-    print_params_hash("zkp-params/groth16_params.bin");
 
-    // Check merkle path length
-    if input.merkle_path.len() != MERKLE_PATH_LEN {
-        return HttpResponse::BadRequest().json(format!(
-            "Merkle path must have {} siblings, got {}",
-            MERKLE_PATH_LEN,
-            input.merkle_path.len()
-        ));
-    }
-
-    // Map all patient fields to field elements
+    // Map fields to Fr
     let hospital_id_fr = string_to_fr(&input.hospital_id);
     let treatment_fr = string_to_fr(&input.treatment);
     let patient_id_fr = string_to_fr(&input.patient_id);
-
-    println!(
-        "Converted hospital_id_fr: {}",
-        hex::encode(hospital_id_fr.to_repr())
-    );
-    println!(
-        "Converted treatment_fr:  {}",
-        hex::encode(treatment_fr.to_repr())
-    );
-    println!(
-        "Converted patient_id_fr: {}",
-        hex::encode(patient_id_fr.to_repr())
-    );
 
     // Poseidon leaf/commitment for public input "preimage_commitment"
     let constants = PoseidonConstants::<Fr, U3>::new();
@@ -345,79 +303,60 @@ async fn generate_proof(input: web::Json<ProofRequest>) -> impl Responder {
     poseidon.input(treatment_fr).expect("input treatment");
     poseidon.input(patient_id_fr).expect("input patient");
     let commitment = poseidon.hash();
-
-    println!(
-        "Poseidon leaf/commitment: {}",
-        hex::encode(commitment.to_repr())
-    );
+    println!("(Hex) Off-circuit commitment: {}", hex::encode(commitment.to_repr()));
 
     // Parse Merkle path
     let mut actual_merkle_path = vec![];
-    for (i, hex_sibling) in input.merkle_path.iter().enumerate() {
-        println!("Decoding merkle_path[{}]: {}", i, hex_sibling);
-        let bytes = match hex::decode(hex_sibling.trim_start_matches("0x")) {
-            Ok(b) => b,
-            Err(e) => {
-                println!("  [ERR] Invalid hex: {:?}", e);
-                return HttpResponse::BadRequest().json(format!(
-                    "Invalid hex in merkle path[{}]: {}",
-                    i, hex_sibling
-                ));
-            }
-        };
-        if bytes.len() != 32 {
-            println!("  [ERR] Not 32 bytes (got {})", bytes.len());
-            return HttpResponse::BadRequest().json(format!(
-                "Merkle sibling hash must be 32 bytes, got {}",
-                bytes.len()
-            ));
-        }
+    for (_i, hex_sibling) in input.merkle_path.iter().enumerate() {
+        let bytes = hex::decode(hex_sibling.trim_start_matches("0x")).unwrap();
         let mut arr = [0u8; 32];
         arr.copy_from_slice(&bytes);
-        let fr_option = Fr::from_repr(arr);
-        if fr_option.is_some().into() {
-            let fr = fr_option.unwrap();
-            println!("  [OK ] Parses as Fr");
-            actual_merkle_path.push(Some(fr));
-        } else {
-            println!("  [ERR] Bytes not valid Fr: {:?}", arr);
-            return HttpResponse::BadRequest().json(format!(
-                "Merkle path[{}] bytes not valid Fr: {}",
-                i, hex_sibling
-            ));
-        }
+        let fr = blstrs::Scalar::from_repr(arr).unwrap();
+        actual_merkle_path.push(Some(fr));
     }
-
     // Parse Merkle root for public input "merkle_root"
-    println!("Parsing Merkle Root...");
-    let merkle_root_bytes = match hex::decode(input.merkle_root.trim_start_matches("0x")) {
-        Ok(b) => b,
-        Err(e) => {
-            println!("  [ERR] Invalid hex for root: {:?}", e);
-            return HttpResponse::BadRequest().json("Invalid hex in merkle_root");
-        }
-    };
-    if merkle_root_bytes.len() != 32 {
-        println!(
-            "  [ERR] merkle_root is not 32 bytes (got {})",
-            merkle_root_bytes.len()
-        );
-        return HttpResponse::BadRequest().json("Merkle root must be 32 bytes");
-    }
+    let merkle_root_bytes = hex::decode(input.merkle_root.trim_start_matches("0x")).unwrap();
     let mut root_arr = [0u8; 32];
     root_arr.copy_from_slice(&merkle_root_bytes[..]);
-    let merkle_root_option = Fr::from_repr(root_arr);
-    let actual_merkle_root = if merkle_root_option.is_some().into() {
-        println!("  [OK ] merkle_root parses as Fr\n");
-        merkle_root_option.unwrap()
-    } else {
-        println!("  [ERR] merkle_root bytes not valid Fr: {:?}", root_arr);
-        return HttpResponse::BadRequest().json("Invalid Fr for merkle_root");
-    };
+    let actual_merkle_root = Fr::from_repr(root_arr).unwrap();
+    println!("(Hex) Off-circuit Merkle Root: {}", hex::encode(actual_merkle_root.to_repr()));
 
-    // Prepare the two public inputs in the same order as circuit alloc_input:
-    // 1. Merkle root (first alloc_input)
-    // 2. Commitment (second alloc_input)
+    // DIAGNOSTIC: Off-circuit Merkle root computation step-by-step
+    println!("==== Off-circuit Merkle path debug ====");
+    let mut debug_cur = commitment;
+    let index = input.merkle_leaf_index;
+    for (i, raw_sib) in input.merkle_path.iter().enumerate() {
+        let bytes = hex::decode(raw_sib.trim_start_matches("0x")).unwrap();
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(&bytes);
+        let sibling = blstrs::Scalar::from_repr(arr).unwrap();
+        let bit = (index >> i) & 1;
+        let (left, right) = if bit == 1 {
+            (sibling, debug_cur)
+        } else {
+            (debug_cur, sibling)
+        };
+        let constants = PoseidonConstants::<Fr, U2>::new();
+        let mut poseidon = Poseidon::new(&constants);
+        poseidon.input(left).unwrap();
+        poseidon.input(right).unwrap();
+        debug_cur = poseidon.hash();
+        println!(
+            "Level {}: Poseidon([{}, {}]) = {}",
+            i,
+            hex::encode(left.to_repr()),
+            hex::encode(right.to_repr()),
+            hex::encode(debug_cur.to_repr())
+        );
+    }
+    println!(
+        "(Hex) Final off-circuit Merkle root: {}",
+        hex::encode(debug_cur.to_repr())
+    );
+
+    // ---- End diagnostics ----
+
+    // Prepare public inputs: root (0), commitment (1)
     let mut root_bytes = [0u8; 32];
     root_bytes.copy_from_slice(&actual_merkle_root.to_repr());
     let mut comm_bytes = [0u8; 32];
@@ -452,22 +391,12 @@ async fn generate_proof(input: web::Json<ProofRequest>) -> impl Responder {
     // Serialize the proof
     let mut proof_bytes: Vec<u8> = vec![];
     proof.write(&mut proof_bytes).unwrap();
-
-    println!(
-        "Proof bytes (hex, first 16): {}",
-        hex::encode(&proof_bytes[..16.min(proof_bytes.len())])
-    );
-    println!(
-        "Public input[0] (merkle root): {}",
-        hex::encode(&root_bytes)
-    );
-    println!(
-        "Public input[1] (commitment):   {}",
-        hex::encode(&comm_bytes)
-    );
-    println!("Proof: {}", hex::encode(&proof_bytes));
-    println!("--- PROOF RESPONSE END ---");
-
+    let result = verify_proof(&prepare_verifying_key(&params.vk), &proof, &[actual_merkle_root, commitment]);
+    dbg!(&result);
+    // Log the values (for frontend or manual debug)
+    println!("Public input[0] (merkle root, LE): {}", hex::encode(&root_bytes));
+    println!("Public input[1] (commitment, LE):   {}", hex::encode(&comm_bytes));
+    println!("Proof (hex): {}", hex::encode(&proof_bytes));
     HttpResponse::Ok().json(ProofResponse {
         proof: proof_bytes,
         public_inputs: vec![root_bytes.to_vec(), comm_bytes.to_vec()], // <----- Correct!
@@ -479,27 +408,33 @@ async fn verify_proof_endpoint(
     proof_data: web::Json<ProofResponse>,
 ) -> Result<HttpResponse, actix_web::Error> {
     println!("=== VERIFY PROOF ===");
-    // ... diagnostics as before
 
-    // Expect exactly 2 public inputs, both 32-byte arrays
+    // Validate the number of public inputs
     if proof_data.public_inputs.len() != 2 {
-        println!(
-            "Invalid number of public inputs: expected 2, got {}",
-            proof_data.public_inputs.len()
-        );
+        println!("Error: Expected 2 public inputs, but got {}", proof_data.public_inputs.len());
         return Ok(HttpResponse::BadRequest().json("Expected 2 public inputs"));
     }
+
+    // Validate the length of each public input
     for (i, inp) in proof_data.public_inputs.iter().enumerate() {
         if inp.len() != 32 {
-            println!("Public input {} not 32 bytes: {:?}", i, inp);
+            println!("Error: Public input {} is not 32 bytes (it has length {})", i, inp.len());
             return Ok(
                 HttpResponse::BadRequest().json(format!("Public input {} must be 32 bytes", i))
             );
         }
     }
+
+    // Convert the first public input to Fr (Merkle root)
     let mut buf0 = [0u8; 32];
     buf0.copy_from_slice(&proof_data.public_inputs[0][..32]);
+    let fr0 = Fr::from_repr(buf0).unwrap();  // <-- no reverse
+    println!("Public input 0 (fr0 - Merkle root): {}", hex::encode(fr0.to_repr()));
+    println!("Public input[1] bytes: {}", hex::encode(&proof_data.public_inputs[1]));
+    println!("Public input[0] bytes (BE): {}", hex::encode(buf0));
+    // Convert the second public input to Fr (commitment)
     let mut buf1 = [0u8; 32];
+    println!("Public input[1] bytes (BE): {}", hex::encode(buf1));
     buf1.copy_from_slice(&proof_data.public_inputs[1][..32]);
     let fr0_option = Fr::from_repr(buf0);
     let fr0 = if fr0_option.is_some().into() {
@@ -516,17 +451,20 @@ async fn verify_proof_endpoint(
         println!("Invalid Fr for public input 1");
         return Ok(HttpResponse::BadRequest().json("Invalid Fr for public input 1"));
     };
+
     let public_input = vec![fr0, fr1];
 
-    // Parse proof as before
+    // Read the proof from the input and check for errors
     let proof: Proof<Bls12> = match Proof::<Bls12>::read(&mut Cursor::new(&proof_data.proof)) {
         Ok(p) => p,
         Err(e) => {
-            println!("Invalid proof format: {:?}", e);
+            println!("Error: Invalid proof format: {:?}", e);
             return Ok(HttpResponse::BadRequest().json("Invalid proof format"));
         }
     };
-    // ... verify as before
+    println!("Proof data (hex): {}", hex::encode(&proof_data.proof));
+
+    // Get the parameters for verification
     let params_guard = PARAMS.lock().unwrap();
     let (_, pvk) = params_guard.as_ref().unwrap();
     let verification_result = verify_proof(&pvk, &proof, &public_input);
@@ -541,62 +479,137 @@ async fn verify_proof_endpoint(
     println!("Verifying with public_input[1]: {}", fr1);
     println!("Proof: {}", hex::encode(&proof_data.proof));
 
+    // Return the result of the match directly, removing redundant code
     match verification_result {
         Ok(true) => {
-            println!("Proof verified? true");
+            println!("✔️ Proof verified successfully.");
             Ok(HttpResponse::Ok().json(json!({"valid": true, "message": "Proof is valid"})))
         }
         Ok(false) => {
-            println!("Proof verified? false (invalid proof)");
+            println!("❌ Proof verification failed.");
             Ok(HttpResponse::Ok().json(json!({"valid": false, "message": "Proof is invalid"})))
         }
         Err(e) => {
-            println!("Error during proof verification: {:?}", e);
-            Ok(HttpResponse::InternalServerError()
-                .json(json!({"valid": false, "message": format!("Verifier error: {:?}", e)})))
+            println!("❌ Proof verification error: {:?}", e);
+            Ok(HttpResponse::BadRequest().json(format!("Proof verification error: {:?}", e)))
         }
     }
 }
 
+
+
+fn poseidon_diag_vector() {
+    let a = Fr::from(1234567890u64);
+    let b = Fr::from(9876543210u64);
+    let c = Fr::from(4444444u64);
+    let cons2 = PoseidonConstants::<Fr, U2>::new();
+    let cons3 = PoseidonConstants::<Fr, U3>::new();
+
+    let mut h2 = Poseidon::new(&cons2);
+    h2.input(a).unwrap();
+    h2.input(b).unwrap();
+    let res2 = h2.hash();
+    println!("=== POSEIDON DIAG VECTORS (OFF-CIRCUIT) ===");
+    println!("U2: inputs: {}, {}", a, b);
+    println!("U2: hash:   {}", hex::encode(res2.to_repr()));
+
+    let mut h3 = Poseidon::new(&cons3);
+    h3.input(a).unwrap();
+    h3.input(b).unwrap();
+    h3.input(c).unwrap();
+    let res3 = h3.hash();
+    println!("U3: inputs: {}, {}, {}", a, b, c);
+    println!("U3: hash:   {}", hex::encode(res3.to_repr()));
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PoseidonHashRequest {
+    inputs: Vec<String>, // Inputs as strings, or hex
+}
+#[derive(Debug, Serialize)]
+pub struct PoseidonHashResponse {
+    hash: String,
+}
+
+#[post("/poseidon-hash")]
+async fn poseidon_hash_endpoint(req: web::Json<PoseidonHashRequest>) -> impl Responder {
+    let frs: Vec<Fr> = match req
+        .inputs
+        .iter()
+        .map(|s| {
+            if s.starts_with("0x") {
+                let bytes = match hex::decode(s.trim_start_matches("0x")) {
+                    Ok(b) => b,
+                    Err(_) => return Err("Invalid hex in poseidon-hash input"),
+                };
+                if bytes.len() != 32 {
+                    return Err("Hex in poseidon-hash input is not 32 bytes");
+                }
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&bytes);
+                let fr_option = Fr::from_repr(arr);
+                if fr_option.is_some().into() {
+                    Ok(fr_option.unwrap())
+                } else {
+                    Err("Input not a valid Fr")
+                }
+            } else {
+                Ok(string_to_fr(s))
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(frs) => frs,
+        Err(e) => return HttpResponse::BadRequest().body(e),
+    };
+    let arity = frs.len();
+    let hash = match arity {
+        2 => {
+            let constants = PoseidonConstants::<Fr, U2>::new();
+            let mut poseidon = Poseidon::new(&constants);
+            poseidon.input(frs[0]).unwrap();
+            poseidon.input(frs[1]).unwrap();
+            poseidon.hash()
+        }
+        3 => {
+            let constants = PoseidonConstants::<Fr, U3>::new();
+            let mut poseidon = Poseidon::new(&constants);
+            poseidon.input(frs[0]).unwrap();
+            poseidon.input(frs[1]).unwrap();
+            poseidon.input(frs[2]).unwrap();
+            poseidon.hash()
+        }
+        _ => return HttpResponse::BadRequest().json("Arity must be 2 or 3"),
+    };
+    let bytes = hash.to_repr();
+    HttpResponse::Ok().json(PoseidonHashResponse {
+        hash: format!("0x{}", hex::encode(bytes)),
+    })
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    poseidon_diag_vector();
     init_params();
-    // println!("=== ZK Proof Service ===");
-    // println!("Loading SNARK parameters...");
-    // let hash_path = "zkp-params/params.circuit_hash";
+    let hospital_id = string_to_fr("df670909-2073-426c-b3e2-3878b9b8caab");
+    let treatment = string_to_fr("Burn");
+    let patient_id = string_to_fr("123");
+    let constants = PoseidonConstants::<Fr, U3>::new();
+    let mut poseidon = Poseidon::new(&constants);
+    poseidon.input(hospital_id).unwrap();
+    poseidon.input(treatment).unwrap();
+    poseidon.input(patient_id).unwrap();
+    let leaf = poseidon.hash();
+    println!(
+        "\nRUST Test Poseidon(hospital, treatment, patient) = {}",
+        hex::encode(leaf.to_repr())
+    );
 
-    // // Read the circuit_hash file, if present
-    // match fs::read(hash_path) {
-    //     Ok(bytes) => {
-    //         println!("circuit_hash from file: {}", hex::encode(&bytes));
-    //     }
-    //     Err(e) => {
-    //         eprintln!("Error reading circuit_hash: {}", e);
-    //     }
-    // }
-
-    // match std::fs::read(hash_path) {
-    //     Ok(bytes) => println!("FILE circuit_hash: {}", hex::encode(bytes)),
-    //     Err(e) => println!("Couldn't read params.circuit_hash: {}", e),
-    // }
-
-    // // Compute the hash according to your circuit_hash() function
-    // let mut hasher = Sha256::new();
-    // hasher.update(b"poseidon-merkle-circuit-v1");
-    // hasher.update(b"MERKLE_PATH_LEN");
-    // hasher.update(&MERKLE_PATH_LEN.to_le_bytes());
-    // let expected_hash = hasher.finalize();
-    // println!("circuit_hash from code:  {}", hex::encode(&expected_hash));
-    // println!("CODE circuit_hash: {}", hex::encode(circuit_hash()));
-    // println!("🚀 Starting Zero-Knowledge Proof service on http://localhost:8080");
-    // println!(
-    //     "BUILD: {}",
-    //     std::env::var("VERGEN_GIT_SHA").unwrap_or_else(|_| "development".to_string())
-    // ); // Fetch at runtime
     HttpServer::new(|| {
         App::new()
             .service(generate_proof)
             .service(verify_proof_endpoint)
+            .service(poseidon_hash_endpoint)
     })
     .bind("0.0.0.0:8080")?
     .run()

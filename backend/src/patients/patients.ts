@@ -5,8 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { PatientDataDto } from './dto/patientDataDtos';
 import { Hospital } from '../hospitals/hospital.entity';
 import { ILike } from 'typeorm';
-import { ZkSnarkService } from '../zk-snark/zk-snark.service';
-import { MerkleService } from '../merkle/merkle.service';
+import { MerkleService } from '../merkle/merkle.service'; // adjust the import!
 import { toMerklePatientRow } from '../merkle/utils';
 
 @Injectable()
@@ -18,7 +17,6 @@ export class PatientService {
     private readonly patientRepository: Repository<Patient>,
     @InjectRepository(Hospital)
     private readonly hospitalRepository: Repository<Hospital>,
-    private readonly zkSnarkService: ZkSnarkService,
     private readonly merkleManager: MerkleService,
   ) {}
 
@@ -131,14 +129,21 @@ export class PatientService {
     await this.merkleManager.ready; // only needed if using async init (see above)
     // 5. Get Merkle proof
     const proof = await this.merkleManager.getProof(patientRows, queryPatient);
+    console.log('[Root]', proof.merkle_root);
+    console.log('[Path]', proof.merkle_path);
+    console.log('[Commitment]', proof.commitment);
+    console.log('[Leaf]', proof.merkle_leaf_index);
+    console.log('[Public Inputs]', proof.public_inputs);
+    console.log('[Proof Valid]', proof.proof_valid);
     // 6. Prepare Rust payload
     const payload = {
       ...queryPatient,
       merkle_leaf_index: proof.merkle_leaf_index,
       merkle_path: proof.merkle_path,
       merkle_root: proof.merkle_root,
+      public_inputs: proof.public_inputs,
     };
-    console.log(JSON.stringify(payload, null, 2));
+    console.log('Rust ZKP payload:', JSON.stringify(payload, null, 2));
     // 7. POST to Rust ZKP microservice
     const rustUrl = `${this.baseUrl}/generate-proof`;
     const response = await fetch(rustUrl, {

@@ -8,7 +8,7 @@ edition = "2021"
 bellperson = "0.26.0"
 neptune = "11.0.0"
 blstrs = "0.7.1"
-actix-web = { version = "4.3", features = ["macros"] }
+actix-web = { version = "4.2", features = ["macros"] }
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -23,3 +23,5 @@ num-traits = "0.2.19"
 bincode = "1.3"
 hostname = "0.4.1"
 ring = "0.17.14"
+hex-literal = "0.3"
+once_cell = "1.17"

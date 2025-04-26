@@ -1,7 +1,6 @@
 import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
 import { ZkSnarkService } from './zk-snark.service';
 import { PatientService } from '../patients/patients';
-import { MerkleManager } from '../merkle/tree'; // adjust the import!
 import { GenerateTreatmentProofDto, VerifyProofDto } from './dto/generateTreatementProofDto';
 
 @Controller('zk-snark')
