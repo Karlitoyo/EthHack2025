@@ -35,22 +35,6 @@ export function toHex32(n: bigint | string): string {
   return "0x" + h.padStart(64, "0");
 }
 
-export function hexBeToLeBytes(hex: string): Uint8Array {
-  let clean = hex.startsWith('0x') ? hex.slice(2) : hex;
-  clean = clean.padStart(64, "0");
-  const beBytes = Buffer.from(clean, 'hex');
-  return Uint8Array.from(beBytes).reverse();
-}
-
-export function safeHexToBigInt(hex: string): bigint {
-  if (typeof hex !== 'string') throw new Error('hex not a string');
-  hex = hex.trim();
-  if (hex.startsWith('0x')) return BigInt(hex);
-  return BigInt('0x' + hex);
-}
-
-export function modFr(x: bigint) { return x % FIELD_MODULUS; }
-
 export function hexToBytesBE(hex: string): Uint8Array {
   let s = hex.replace(/^0x/, '');
   if (s.length !== 64) throw new Error(`Hex string must have 32 bytes (got ${hex})`);
