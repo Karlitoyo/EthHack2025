@@ -538,6 +538,7 @@ async fn poseidon_hash_endpoint(req: web::Json<PoseidonHashRequest>) -> impl Res
         .iter()
         .map(|s| {
             if s.starts_with("0x") {
+                println!("Parsing {} as field element", s);
                 let bytes = match hex::decode(s.trim_start_matches("0x")) {
                     Ok(b) => b,
                     Err(_) => return Err("Invalid hex in poseidon-hash input"),
@@ -554,6 +555,7 @@ async fn poseidon_hash_endpoint(req: web::Json<PoseidonHashRequest>) -> impl Res
                     Err("Input not a valid Fr")
                 }
             } else {
+                println!("Parsing {} as string_to_fr", s);
                 Ok(string_to_fr(s))
             }
         })
