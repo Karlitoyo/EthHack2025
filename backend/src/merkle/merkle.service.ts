@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { rustPoseidonHash } from './poseidon';
+import { rustPoseidonHash, rustStringToFr } from './poseidon';
 import { PatientRow } from './interfaces/merkleTree';
 import { MERKLE_PATH_LEN } from './constants/constants';
 import { hexToBytesBE, FIELD_MODULUS, toHex32 } from './utils';
@@ -7,166 +7,140 @@ import { hexToBytesBE, FIELD_MODULUS, toHex32 } from './utils';
 @Injectable()
 export class MerkleService {
   ready: boolean = true;
-
   static modFr(x: bigint): bigint {
     return x % FIELD_MODULUS;
   }
 
-  // LEAVES: always hash as string_to_fr via Rust
-  async patientLeaf(p: PatientRow): Promise<bigint> {
-    let leafVal = BigInt(
-      await rustPoseidonHash([
-        p.hospital_id.toString(),
-        p.treatment.toString(),
-        p.patient_id.toString(),
-      ]),
-    );
-    leafVal = MerkleService.modFr(leafVal);
-    if (leafVal >= FIELD_MODULUS) throw new Error("HashVal out of Fr!");
-    console.log(
-      '[patientLeaf] hashing args:', p.hospital_id, p.treatment, p.patient_id,
-    );
-    console.log('[patientLeaf] resulting leaf (hex, modFr):', toHex32(leafVal));
-    return leafVal;
+  async patientLeaf(p: PatientRow): Promise<string> {
+    const fr_hospital_id = await rustStringToFr(p.hospital_id);
+    const fr_treatment   = await rustStringToFr(p.treatment);
+    const fr_patient_id  = await rustStringToFr(p.patient_id);
+    return await rustPoseidonHash([fr_hospital_id, fr_treatment, fr_patient_id]); // 0x..., Fr, 32 bytes
   }
 
+  async computeMerkleRootFromPath(
+    path: string[],
+    leaf: string,
+    index: number,
+  ): Promise<string> {
+    let cur = leaf;
+    for (let i = 0; i < path.length; i++) {
+      const sibling = path[i];
+      const bit = (index >> i) & 1;
+      const left = bit ? sibling : cur;
+      const right = bit ? cur : sibling;
+      cur = await rustPoseidonHash([left, right]);
+      cur = toHex32(MerkleService.modFr(BigInt(cur)));
+    }
+    return cur;
+  }
+ /**
+   * Computes a ZKP-compatible Merkle tree using only field-reduced Frs
+   *
+   * @param allPatients Array of PatientRow to include in tree
+   * @param queryPatient The patient for which to make the proof
+   */
   async getProof(allPatients: PatientRow[], queryPatient: PatientRow) {
-    let leaves: bigint[] = [];
-    console.log('[getProof] Start gathering leaves for all patients...');
-    for (const p of allPatients) {
-      const leaf = await this.patientLeaf(p);
-      if (leaf >= FIELD_MODULUS) throw new Error('Leaf out of Fr after modFr!');
-      leaves.push(leaf);
-      console.log('[getProof] Leaf for patient:', p.patient_id, '=', toHex32(leaf));
-    }
-    while (leaves.length < 1 << MERKLE_PATH_LEN) {
-      console.log('[getProof] Adding dummy leaves, current length:', leaves.length);
-      let dummyLeafVal = BigInt(
-        await rustPoseidonHash(['DUMMY', 'DUMMY', String(leaves.length)]),
-      );
-      dummyLeafVal = MerkleService.modFr(dummyLeafVal);
-      leaves.push(dummyLeafVal);
-      console.log('[getProof] Dummy leaf (modFr):', toHex32(dummyLeafVal));
+    // (1) Compute all leaf values (strings → field → poseidon)
+    const leaves: string[] = []; // Each is 0x...hex
+    for (const p of allPatients) leaves.push(await this.patientLeaf(p));
+
+    // (2) Pad leaves (for full tree)
+    while (leaves.length < (1 << MERKLE_PATH_LEN)) {
+      // Use special form so the string_to_fr hash is consistent!
+      const dummy_fr0 = await rustStringToFr("DUMMY");
+      const dummy_fr1 = await rustStringToFr("DUMMY");
+      const dummy_fr2 = await rustStringToFr(String(leaves.length));
+      const dummy_leaf = await rustPoseidonHash([dummy_fr0, dummy_fr1, dummy_fr2]);
+      leaves.push(dummy_leaf);
     }
 
-    let queryLeaf = await this.patientLeaf(queryPatient);
-    queryLeaf = MerkleService.modFr(queryLeaf);
-    if (queryLeaf >= FIELD_MODULUS) throw new Error("HashVal out of Fr!");
-    console.log('[CHECK] queryLeaf bigint (modFr):', queryLeaf.toString(10), 'hex:', toHex32(queryLeaf));
-    if (queryLeaf >= FIELD_MODULUS) {
-      console.log('BAD: value too large for BLS12-381 Fr!');
-    }
-    console.log('queryLeaf (as bigint, modFr):', queryLeaf.toString(10));
-    console.log('queryLeaf (as hex, BE):', toHex32(queryLeaf));
-    // Avoid LE flips for public input calculation.
+    // (3) Compute the query leaf for the actual patient (again via string_to_fr → poseidon)
+    // NB: it MUST be identical to one in leaves array (or throw if not found)
+    const query_leaf = await this.patientLeaf(queryPatient);
+    const leaf_idx = leaves.findIndex((x) => x.toLowerCase() === query_leaf.toLowerCase());
+    if (leaf_idx === -1)
+      throw new Error("Query patient leaf not found in tree!");
 
-    const index = leaves.findIndex((l) => l === queryLeaf);
-    if (index === -1) throw new Error('Query patient not found in patient set');
-    let levels: bigint[][] = [leaves];
-    let curr = leaves;
-    // Merkle-up
-    for (let level = 0; level < MERKLE_PATH_LEN; level++) {
-      const next: bigint[] = [];
-      for (let i = 0; i < curr.length; i += 2) {
-        const left = curr[i];
-        const right = curr[i + 1];
-        // # PATCH: always pass BE hex for internal nodes/parents
-        let parentVal = BigInt(
-          await rustPoseidonHash([toHex32(left), toHex32(right)]),
-        );
-        parentVal = MerkleService.modFr(parentVal);
-        if (parentVal >= FIELD_MODULUS) throw new Error("HashVal out of Fr!");
-        next.push(parentVal);
-        console.log(
-          '[getProof] Level', level,
-          ' Hashing pair: left=', toHex32(left),
-          ' right=', toHex32(right),
-          ' parent=', toHex32(parentVal),
-        );
+    // (4) Build the tree, always use 0x...hex Fr as left/right, never raw values
+    const levels: string[][] = [leaves];
+    let cur = leaves;
+    for (let depth = 0; depth < MERKLE_PATH_LEN; depth++) {
+      const next: string[] = [];
+      for (let i = 0; i < cur.length; i += 2) {
+        const left = cur[i], right = cur[i + 1];
+        const parent = await rustPoseidonHash([left, right]);
+        next.push(parent); // Always 0x...hex
       }
       levels.push(next);
-      curr = next;
+      cur = next;
     }
-    const root = curr[0];
+    const merkle_root = cur[0]; // root as 0x...
 
-    // Merkle path as 0x... 32B hex
-    let idx = index;
+    // (5) Compute Merkle path (sibling at each level as 0x...hex)
+    let idx = leaf_idx;
     const path: string[] = [];
-    for (let level = 0; level < MERKLE_PATH_LEN; level++) {
+    for (let depth = 0; depth < MERKLE_PATH_LEN; depth++) {
       const sibIdx = idx ^ 1;
-      path.push(toHex32(levels[level][sibIdx])); // always 0x... 32B hex
-      console.log(
-        '[getProof] Level', level,
-        ' Sibling at index', sibIdx,
-        ' Path element:', toHex32(levels[level][sibIdx]),
-      );
+      path.push(levels[depth][sibIdx]);
       idx = Math.floor(idx / 2);
     }
-    // Debug prints
-    console.log('[getProof] Final Merkle Root:', toHex32(root));
-    console.log('[getProof] Merkle Path:', path);
-    await this.logMerkleDebug({
-      patient: queryPatient,
-      leafIndex: index,
-      leafHex: toHex32(queryLeaf),
-      path,
-      levels,
-    });
 
-    const isValid = await this.verifyMerkleProof(
-      toHex32(queryLeaf), path, toHex32(root),
-    );
-    if (isValid) console.log('[getProof] Proof is valid!');
-    else console.log('[getProof] Proof is invalid!');
-
-    // Public inputs as 32B BE (for Rust ZKP)
-    return {
-      merkle_leaf_index: index,
-      merkle_path: path,                   // each is 0x... 32B
-      merkle_root: toHex32(root),          // 0x... 32B BE
-      commitment: toHex32(queryLeaf),      // 0x... 32B BE
-      proof_valid: isValid,
-      public_inputs: [
-        Array.from(hexToBytesBE(toHex32(root))),
-        Array.from(hexToBytesBE(toHex32(queryLeaf))),
-      ],
-    };
-  }
-
-  async logMerkleDebug({ patient, leafIndex, leafHex, path, levels }) {
-    console.log('== JS Merkle Membership Debug ==');
-    console.log('Patient:', patient);
-    console.log('Leaf index:', leafIndex);
-    console.log('Leaf value:', leafHex);
-    // NOTE: for Merkle path, always keep parent/sibling as 0x... BE hex
-    let cur = BigInt(leafHex);
+    // (6) For frontend/manual debug, show leaf → root tracing matches circuit
+    const DEBUG_LOG = true; // Control debug logging
+    let test_cur = query_leaf;
     for (let i = 0; i < path.length; i++) {
-      const sibHex = path[i];
-      const bit = (leafIndex >> i) & 1;
-      const left = bit ? BigInt(sibHex) : cur;
-      const right = bit ? cur : BigInt(sibHex);
-      console.log(
-        `Level ${i}: Direction bit=${bit} (You are on ${bit === 1 ? 'right' : 'left'})`
-      );
-      console.log(`  Sibling: ${toHex32(BigInt(sibHex))}`);
-      console.log(`  PoseidonHash([${toHex32(left)}, ${toHex32(right)}])`);
-      cur = await rustPoseidonHash([toHex32(left), toHex32(right)]).then((x) =>
-        MerkleService.modFr(BigInt(x))
-      );
-      console.log(`  --> Combined Hash: ${toHex32(cur)}`);
+      const sibling = path[i];
+      const bit = (leaf_idx >> i) & 1;
+      const left  = bit ? sibling : test_cur; // If on right, sibling left; else, leaf left
+      const right = bit ? test_cur : sibling;
+      
+      const LOG_PREFIX = `JS Merkle Level ${i}:`;
+      if (DEBUG_LOG) {
+        console.log(`${LOG_PREFIX} left=${left} right=${right}`);
+      }
+      
+      test_cur = await rustPoseidonHash([left, right]);
     }
-    console.log('Computed JS Merkle Root:', toHex32(cur));
+    
+    const ROOT_LOG_PREFIX = "JS Recomputed root from proof:";
+    if (DEBUG_LOG) {
+      console.log(`${ROOT_LOG_PREFIX} ${test_cur}`);
+    }
+    console.log('Merkle path output length:', path.length);
+    const proofValue = {
+      merkle_leaf_index: leaf_idx,
+      merkle_path: path,               // Each as 0x...hex Fr
+      merkle_root: merkle_root,        // 0x...hex Fr
+      // commitment: query_leaf,          // 0x...hex Fr, matches circuit's poseidon
+      // public_inputs: [
+      //   Array.from(hexToBytesBE(merkle_root)),
+      //   Array.from(hexToBytesBE(query_leaf)),
+      // ],
+    };
+
+    console.log("== Merkle proof ==", proofValue);
+    
+    // (7) Assemble public_inputs arrays (root, commitment) as 32B BE arrays
+    return proofValue
   }
 
-  async verifyMerkleProof(leaf: string, proof: string[], root: string): Promise<boolean> {
-    // leaf should be 0x... 32-byte BE hex
-    let computedHash = leaf;
+  /**
+   * Verifies a Merkle proof.
+   * @param leaf The leaf node to verify.
+   * @param proof The Merkle proof (array of sibling nodes).
+   * @param root The expected Merkle root.
+   * @returns True if the proof is valid, false otherwise.
+   */
+  async verifyMerkleProof(leaf: string, proof: string[], root: string, index: number): Promise<boolean> {
+    let computed = leaf;
     for (let i = 0; i < proof.length; i++) {
       const sibling = proof[i];
-      // Always pass both as 0x...32B hex for Rust
-      computedHash = await rustPoseidonHash([computedHash, sibling]);
-      computedHash = toHex32(MerkleService.modFr(BigInt(computedHash)));
+      const bit = (index >> i) & 1;
+      const left = bit ? sibling : computed;
+      const right = bit ? computed : sibling;
+      computed = await rustPoseidonHash([left, right]);
     }
-    return computedHash === root;
+    return computed.toLowerCase() === root.toLowerCase();
   }
 }

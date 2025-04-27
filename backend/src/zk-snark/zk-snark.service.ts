@@ -46,6 +46,10 @@ export class ZkSnarkService {
     });
     // ...logging etc.
     if (!res.ok) throw new Error(`ZKP verification error: ${res.status}`);
+    console.log(
+      'Sending payload to Rust microservice:',
+      JSON.stringify(res)
+    );
     return res.json();
   }
 
@@ -74,6 +78,10 @@ export class ZkSnarkService {
       const err = await response.text();
       throw new Error(`Rust microservice error: ${response.status}: ${err}`);
     }
+    console.log(
+      'Sending payload to Rust microservice:',
+      JSON.stringify(response)
+    );
     // JSON result contains ZK proof and public input
     return await response.json();
   }

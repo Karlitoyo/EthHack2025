@@ -7,7 +7,7 @@ import { Hospital } from '../hospitals/hospital.entity';
 import { ILike } from 'typeorm';
 import { MerkleService } from '../merkle/merkle.service'; // adjust the import!
 import { toMerklePatientRow } from '../merkle/utils';
-
+import { MERKLE_PATH_LEN } from '../merkle/constants/constants';
 @Injectable()
 export class PatientService {
   private baseUrl = 'http://172.29.14.163:8080';
@@ -131,17 +131,18 @@ export class PatientService {
     const proof = await this.merkleManager.getProof(patientRows, queryPatient);
     console.log('[Root]', proof.merkle_root);
     console.log('[Path]', proof.merkle_path);
-    console.log('[Commitment]', proof.commitment);
+    // console.log('[Commitment]', proof.commitment);
     console.log('[Leaf]', proof.merkle_leaf_index);
-    console.log('[Public Inputs]', proof.public_inputs);
-    console.log('[Proof Valid]', proof.proof_valid);
+    // console.log('[Public Inputs]', proof.public_inputs);
+    console.log('Sending to generateProof. Path len:', proof.merkle_path.length, proof.merkle_path);
+    if(proof.merkle_path.length !== MERKLE_PATH_LEN) throw new Error('BUG: backend is about to send a bad path length!');
     // 6. Prepare Rust payload
     const payload = {
       ...queryPatient,
       merkle_leaf_index: proof.merkle_leaf_index,
       merkle_path: proof.merkle_path,
       merkle_root: proof.merkle_root,
-      public_inputs: proof.public_inputs,
+      // public_inputs: proof.public_inputs,
     };
     console.log('Rust ZKP payload:', JSON.stringify(payload, null, 2));
     // 7. POST to Rust ZKP microservice

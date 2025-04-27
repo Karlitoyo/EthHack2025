@@ -35,12 +35,10 @@ export function toHex32(n: bigint | string): string {
   return "0x" + h.padStart(64, "0");
 }
 
-export function hexToBytesBE(hex: string): Uint8Array {
+export function hexToBytesBE(hex) {
   let s = hex.replace(/^0x/, '');
-  if (s.length !== 64) throw new Error(`Hex string must have 32 bytes (got ${hex})`);
+  if (s.length !== 64) throw new Error(`must be 32-byte hex`);
   const arr = new Uint8Array(32);
-  for (let i = 0; i < 32; i++) {
-    arr[i] = parseInt(s.substr(i * 2, 2), 16);
-  }
+  for (let i = 0; i < 32; ++i) arr[i] = parseInt(s.substr(i*2,2),16);
   return arr;
 }
