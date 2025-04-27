@@ -254,7 +254,6 @@ impl Circuit<Fr> for MyCircuit {
         let patient_id = AllocatedNum::alloc(cs.namespace(|| "patient_id"), || {
             self.patient_id.ok_or(SynthesisError::AssignmentMissing)
         })?;
-        // REMOVED: let bits: Vec<Boolean> = patient_id.to_bits_le(cs.namespace(|| "patient_id_bits"))?;
         
         // 2. Poseidon leaf
         let poseidon_constants = PoseidonConstants::<Fr, U3>::new();
@@ -304,17 +303,8 @@ impl Circuit<Fr> for MyCircuit {
             |lc| lc + CS::one(),
             |lc| lc + root_var,
         );
-        // 7. REMOVED Range check for patient_id
-        /*
-        for (i, bit) in bits.iter().enumerate().skip(20) { // Check bits from index 20 upwards
-            Boolean::enforce_equal(
-                cs.namespace(|| format!("range bit[{}] zero", i)), 
-                bit, &Boolean::constant(false)
-            )?;
-        }
-        */
         
-        // 8. Enforce public commitment = leaf
+        // 7. Enforce public commitment = leaf
         let comm_var = cs.alloc_input(
             || "preimage commitment",
             || self.preimage_commitment.ok_or(SynthesisError::AssignmentMissing),
@@ -433,35 +423,35 @@ async fn debug_zero_proof_old() -> impl Responder {
 #[post("/debug-verify-proof")]
 async fn debug_verify_proof() -> impl Responder {
     println!("=== DEBUG VERIFY PROOF ===");
-    
+
     // Wrap everything in a try-catch to prevent server crashes
     let result = std::panic::catch_unwind(|| {
         // Force parameter regeneration for testing
         let params_path = "zkp-params/groth16_params.bin";
         let hash_path = "zkp-params/params.circuit_hash";
-        
+
         // Check if parameters exist
         if !Path::new(params_path).exists() || !Path::new(hash_path).exists() {
-            return Err("Parameters not found, please run init_params first");
+            return Err("Parameters not found, please run init_params first".to_string());
         }
-        
+
         // Step 1: Create a sample witness with real values from our logs
         println!("1. Creating sample witness");
         let hospital_id = match std::panic::catch_unwind(|| string_to_fr("df670909-2073-426c-b3e2-3878b9b8caab")) {
             Ok(id) => id,
-            Err(_) => return Err("Failed to convert hospital_id")
+            Err(_) => return Err("Failed to convert hospital_id".to_string())
         };
-        
+
         let treatment = match std::panic::catch_unwind(|| string_to_fr("Burn")) {
             Ok(t) => t,
-            Err(_) => return Err("Failed to convert treatment")
+            Err(_) => return Err("Failed to convert treatment".to_string())
         };
-        
+
         let patient_id = match std::panic::catch_unwind(|| string_to_fr("123")) {
             Ok(pid) => pid,
-            Err(_) => return Err("Failed to convert patient_id")
+            Err(_) => return Err("Failed to convert patient_id".to_string())
         };
-        
+
         // Compute poseidon leaf (commitment)
         println!("2. Computing commitment hash");
         let commitment = match std::panic::catch_unwind(|| {
@@ -473,11 +463,11 @@ async fn debug_verify_proof() -> impl Responder {
             poseidon.hash()
         }) {
             Ok(c) => c,
-            Err(_) => return Err("Failed to compute commitment")
+            Err(_) => return Err("Failed to compute commitment".to_string())
         };
-        
+
         println!("Commitment: 0x{}", hex::encode(commitment.to_repr()));
-        
+
         // Create Merkle path from known values
         println!("3. Setting up Merkle path");
         let merkle_path_values = vec![
@@ -485,109 +475,87 @@ async fn debug_verify_proof() -> impl Responder {
             "373194f79041883e41b056dfa1b213c3d8698d2604d5c8ca6faf7233c514584f",
             "979b70f475e0c23f8d6b7c513268a72623c61956bd8e54a2d25a623d43622f2e",
         ];
-        
+
         let mut path = Vec::new();
-        for hex_str in &merkle_path_values {
-            match hex::decode(hex_str) {
-                Ok(bytes) => {
-                    if bytes.len() != 32 {
-                        return Err("Invalid path element length");
-                    }
-                    
-                    let mut arr = [0u8; 32];
-                    arr.copy_from_slice(&bytes);
-                    
-                    // Use from_bytes_be since we're receiving big-endian representation
-                    match Fr::from_bytes_be(&arr) {
-                        s if bool::from(s.is_some()) => path.push(s.unwrap()),
-                        _ => {
-                            // Try reverse byte order as a fallback
-                            let mut reversed = arr.clone();
-                            reversed.reverse();
-                            match Fr::from_bytes_be(&reversed) {
-                                s if bool::from(s.is_some()) => {
-                                    println!("Note: Using reversed bytes for: {}", hex_str);
-                                    path.push(s.unwrap())
-                                },
-                                _ => return Err("Invalid Fr value from bytes")
-                            }
-                        }
-                    }
-                },
-                Err(_) => return Err("Failed to decode hex string")
+        for (i, hex_str) in merkle_path_values.iter().enumerate() {
+            let bytes = match hex::decode(hex_str) {
+                Ok(b) => b,
+                Err(_) => return Err(format!("Failed to decode path hex string {}", i)),
+            };
+            if bytes.len() != 32 {
+                return Err(format!("Invalid path element length for index {}", i));
             }
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&bytes);
+
+            // *** FIX: Use from_repr (Little-Endian) ***
+            let fr_val = match Fr::from_repr(arr) {
+                 s if bool::from(s.is_some()) => s.unwrap(),
+                 _ => return Err(format!("Invalid Fr representation for path element {}", i)),
+            };
+            println!("Parsed path[{}]: 0x{}", i, hex::encode(fr_val.to_repr()));
+            path.push(fr_val);
         }
-        
+
         // Expected merkle root
         println!("4. Setting up expected root");
         let root_hex = "3eeeeae9e5b17f1760306bcd77b2eb04c223ad9fbc3984a6ef34cce4e7bd3a6c";
         let root_bytes = match hex::decode(root_hex) {
-            Ok(bytes) => bytes,
-            Err(_) => return Err("Failed to decode root hex")
+            Ok(b) => b,
+            Err(_) => return Err("Failed to decode root hex".to_string()),
         };
-        
         if root_bytes.len() != 32 {
-            return Err("Invalid root length");
+            return Err("Invalid root length".to_string());
         }
-        
         let mut root_arr = [0u8; 32];
         root_arr.copy_from_slice(&root_bytes);
-        
-        let expected_root = match Fr::from_bytes_be(&root_arr) {
+
+        // *** FIX: Use from_repr (Little-Endian) ***
+        let expected_root = match Fr::from_repr(root_arr) {
             s if bool::from(s.is_some()) => s.unwrap(),
-            _ => {
-                // Try reverse byte order as a fallback
-                let mut reversed = root_arr.clone();
-                reversed.reverse();
-                match Fr::from_bytes_be(&reversed) {
-                    s if bool::from(s.is_some()) => {
-                        println!("Note: Using reversed bytes for root");
-                        s.unwrap()
-                    },
-                    _ => return Err("Invalid root Fr value")
-                }
-            }
+            _ => return Err("Invalid Fr representation for root".to_string()),
         };
-        
+
         println!("Expected root: 0x{}", hex::encode(expected_root.to_repr()));
-        
+
         // Step 2: Create circuit instance
         println!("5. Creating circuit instance");
         let circuit = MyCircuit {
             hospital_id: Some(hospital_id),
             treatment: Some(treatment),
             patient_id: Some(patient_id),
-            leaf_index: Some(1),
+            leaf_index: Some(1), // Hardcoded index from logs
             merkle_path: path.iter().map(|&x| Some(x)).collect(),
-            merkle_root: Some(expected_root),
+            merkle_root: Some(expected_root), // Use the correctly parsed root
             preimage_commitment: Some(commitment),
         };
-        
+
         // Step 3: Load parameters
         println!("6. Loading parameters");
         let params_guard = PARAMS.lock().unwrap();
         if params_guard.is_none() {
-            return Err("Parameters not initialized");
+            return Err("Parameters not initialized".to_string());
         }
-        
+
         // Step 4: Generate proof
         println!("7. Generating proof");
         let (params, pvk) = params_guard.as_ref().unwrap();
         let proof = match std::panic::catch_unwind(|| create_random_proof(circuit, params, &mut OsRng)) {
             Ok(Ok(p)) => p,
-            Ok(Err(_e)) => return Err("Proof generation failed"),
-            Err(_) => return Err("Proof generation panicked")
+            Ok(Err(e)) => return Err(format!("Proof generation failed: {:?}", e)),
+            Err(_) => return Err("Proof generation panicked".to_string())
         };
-        
+
         // Step 5: Verify proof
         println!("8. Verifying proof");
+        // *** Use the correctly parsed root for verification ***
         let pub_inputs = vec![expected_root, commitment];
-        
-        println!("Public inputs: [0x{}, 0x{}]", 
+
+        println!("Public inputs: [0x{}, 0x{}]",
             hex::encode(pub_inputs[0].to_repr()),
             hex::encode(pub_inputs[1].to_repr())
         );
-        
+
         // Verify proof
         let result = match verify_proof(pvk, &proof, &pub_inputs) {
             Ok(true) => {
@@ -614,13 +582,13 @@ async fn debug_verify_proof() -> impl Responder {
             },
             Err(e) => {
                 println!("❌ DEBUG verification error: {:?}", e);
-                Err("Verification error")
+                Err(format!("Verification error: {:?}", e))
             }
         };
-        
+
         result
     });
-    
+
     match result {
         Ok(Ok(json)) => HttpResponse::Ok().json(json),
         Ok(Err(err)) => HttpResponse::InternalServerError().json(format!("Operation failed: {}", err)),
