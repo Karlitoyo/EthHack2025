@@ -1,146 +1,173 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { rustPoseidonHash, rustStringToFr } from './poseidon';
 import { PatientRow } from './interfaces/merkleTree';
 import { MERKLE_PATH_LEN } from './constants/constants';
-import { hexToBytesBE, FIELD_MODULUS, toHex32 } from './utils';
+import { FIELD_MODULUS, toHex32 } from './utils';
 
 @Injectable()
 export class MerkleService {
+  private readonly logger = new Logger(MerkleService.name);
   ready: boolean = true;
+  
   static modFr(x: bigint): bigint {
     return x % FIELD_MODULUS;
   }
 
+  // LEAF
   async patientLeaf(p: PatientRow): Promise<string> {
+    this.logger.verbose(`[JS-MERKLE] Creating leaf for patient_id=[${p.patient_id}] hospital_id=[${p.hospital_id}] treatment=[${p.treatment}]`);
     const fr_hospital_id = await rustStringToFr(p.hospital_id);
     const fr_treatment   = await rustStringToFr(p.treatment);
     const fr_patient_id  = await rustStringToFr(p.patient_id);
-    return await rustPoseidonHash([fr_hospital_id, fr_treatment, fr_patient_id]); // 0x..., Fr, 32 bytes
+    this.logger.verbose(`[JS-MERKLE] Field representations: hospital_id: ${fr_hospital_id} treatment: ${fr_treatment} patient_id: ${fr_patient_id}`);
+    const leaf = await rustPoseidonHash([fr_hospital_id, fr_treatment, fr_patient_id]);
+    this.logger.log(`[JS-MERKLE] LEAF: ${leaf}`);
+    return leaf; // 0x..., Fr, 32 bytes
   }
 
+  // MERKLE root from path (standalone)
   async computeMerkleRootFromPath(
     path: string[],
     leaf: string,
     index: number,
   ): Promise<string> {
+    this.logger.log(`[JS-PROOF] Computing Merkle root from proof path: leaf=${leaf} index=${index}`);
     let cur = leaf;
     for (let i = 0; i < path.length; i++) {
       const sibling = path[i];
       const bit = (index >> i) & 1;
       const left = bit ? sibling : cur;
       const right = bit ? cur : sibling;
-      cur = await rustPoseidonHash([left, right]);
-      cur = toHex32(MerkleService.modFr(BigInt(cur)));
+      this.logger.log(`[JS-PROOF] LEVEL=${i} (bit=${bit}) | left=${left} | right=${right}`);
+      const nextCur = await rustPoseidonHash([left, right]);
+      this.logger.log(`[JS-PROOF] LEVEL=${i} | poseidon([left,right]) => ${nextCur}`);
+      cur = toHex32(MerkleService.modFr(BigInt(nextCur)));
     }
+    this.logger.log(`[JS-PROOF] Final computed Merkle root: ${cur}`);
     return cur;
   }
- /**
-   * Computes a ZKP-compatible Merkle tree using only field-reduced Frs
-   *
-   * @param allPatients Array of PatientRow to include in tree
-   * @param queryPatient The patient for which to make the proof
-   */
-  async getProof(allPatients: PatientRow[], queryPatient: PatientRow) {
-    // (1) Compute all leaf values (strings → field → poseidon)
-    const leaves: string[] = []; // Each is 0x...hex
-    for (const p of allPatients) leaves.push(await this.patientLeaf(p));
 
-    // (2) Pad leaves (for full tree)
+  // Main proof generator
+  async getProof(allPatients: PatientRow[], queryPatient: PatientRow) {
+    this.logger.log(`[JS-PROOF] Generating proof for patient ${queryPatient.patient_id} out of ${allPatients.length} patients`);
+    // (1) Compute leaves
+    this.logger.log(`[JS-PROOF] (1) Computing leaf values for ${allPatients.length} patients`);
+    const leaves: string[] = [];
+    for (const p of allPatients) {
+      const leaf = await this.patientLeaf(p);
+      this.logger.log(`[JS-PROOF] Leaf for patient_id=${p.patient_id}: ${leaf}`);
+      leaves.push(leaf);
+    }
+    // (2) Padding
+    this.logger.log(`[JS-PROOF] (2) Padding leaves to ${1 << MERKLE_PATH_LEN}`);
+    const initialLeafCount = leaves.length;
     while (leaves.length < (1 << MERKLE_PATH_LEN)) {
-      // Use special form so the string_to_fr hash is consistent!
       const dummy_fr0 = await rustStringToFr("DUMMY");
       const dummy_fr1 = await rustStringToFr("DUMMY");
       const dummy_fr2 = await rustStringToFr(String(leaves.length));
       const dummy_leaf = await rustPoseidonHash([dummy_fr0, dummy_fr1, dummy_fr2]);
+      this.logger.log(`[JS-PROOF] Padding with dummy leaf: ${dummy_leaf} (idx=${leaves.length})`);
       leaves.push(dummy_leaf);
     }
-
-    // (3) Compute the query leaf for the actual patient (again via string_to_fr → poseidon)
-    // NB: it MUST be identical to one in leaves array (or throw if not found)
+    this.logger.log(`[JS-PROOF] Padded leaves count: ${leaves.length}`);
+    // (3) Query leaf
+    this.logger.log(`[JS-PROOF] (3) Get query leaf for patient: ${queryPatient.patient_id}`);
     const query_leaf = await this.patientLeaf(queryPatient);
     const leaf_idx = leaves.findIndex((x) => x.toLowerCase() === query_leaf.toLowerCase());
-    if (leaf_idx === -1)
-      throw new Error("Query patient leaf not found in tree!");
-
-    // (4) Build the tree, always use 0x...hex Fr as left/right, never raw values
+    if (leaf_idx === -1) throw new Error("Query patient leaf not found in tree!");
+    this.logger.log(`[JS-PROOF] Found query leaf at index: ${leaf_idx}`);
+    // (4) Build tree
+    this.logger.log(`[JS-PROOF] (4) Building Merkle tree with MERKLE_PATH_LEN=${MERKLE_PATH_LEN}`);
     const levels: string[][] = [leaves];
     let cur = leaves;
     for (let depth = 0; depth < MERKLE_PATH_LEN; depth++) {
       const next: string[] = [];
+      this.logger.log(`[JS-MERKLE] Building LEVEL=${depth} with ${cur.length} nodes`);
       for (let i = 0; i < cur.length; i += 2) {
         const left = cur[i], right = cur[i + 1];
+        this.logger.log(`[JS-MERKLE]   Hashing: [${i},${i + 1}] left=${left} right=${right}`);
         const parent = await rustPoseidonHash([left, right]);
-        next.push(parent); // Always 0x...hex
+        this.logger.log(`[JS-MERKLE]   Result: parent=${parent}`);
+        next.push(parent);
       }
       levels.push(next);
       cur = next;
     }
-    const merkle_root = cur[0]; // root as 0x...
-
-    // (5) Compute Merkle path (sibling at each level as 0x...hex)
+    const merkle_root = cur[0];
+    this.logger.log(`[JS-MERKLE] Merkle root: ${merkle_root}`);
+    // (5) Merkle path
+    this.logger.log(`[JS-PROOF] (5) Computing Merkle path for leaf_index=${leaf_idx}`);
     let idx = leaf_idx;
     const path: string[] = [];
     for (let depth = 0; depth < MERKLE_PATH_LEN; depth++) {
       const sibIdx = idx ^ 1;
-      path.push(levels[depth][sibIdx]);
+      const siblingValue = levels[depth][sibIdx];
+      path.push(siblingValue);
+      this.logger.log(`[JS-MERKLE] LEVEL=${depth} | sibling index: ${sibIdx} value: ${siblingValue}`);
       idx = Math.floor(idx / 2);
     }
-
-    // (6) For frontend/manual debug, show leaf → root tracing matches circuit
-    const DEBUG_LOG = true; // Control debug logging
+    // (6) Manual verification & round-by-round check
+    this.logger.log(`[JS-PROOF] (6) Verifying proof path maps to root...`);
     let test_cur = query_leaf;
     for (let i = 0; i < path.length; i++) {
       const sibling = path[i];
       const bit = (leaf_idx >> i) & 1;
-      const left  = bit ? sibling : test_cur; // If on right, sibling left; else, leaf left
+      const left  = bit ? sibling : test_cur;
       const right = bit ? test_cur : sibling;
-      
-      const LOG_PREFIX = `JS Merkle Level ${i}:`;
-      if (DEBUG_LOG) {
-        console.log(`${LOG_PREFIX} left=${left} right=${right}`);
-      }
-      
+      this.logger.log(`[JS-MERKLE] PROOF CHECK Level=${i} | bit=${bit} | L=${left} | R=${right}`);
       test_cur = await rustPoseidonHash([left, right]);
+      this.logger.log(`[JS-MERKLE] PROOF CHECK Level=${i} Result: hash=${test_cur}`);
     }
-    
-    const ROOT_LOG_PREFIX = "JS Recomputed root from proof:";
-    if (DEBUG_LOG) {
-      console.log(`${ROOT_LOG_PREFIX} ${test_cur}`);
-    }
-    console.log('Merkle path output length:', path.length);
-    const proofValue = {
+    const rootMatches = test_cur.toLowerCase() === merkle_root.toLowerCase();
+    this.logger.log(`[JS-MERKLE] PROOF CHECK FINAL: leaf_index=${leaf_idx}\n      Final: ${test_cur} \n      Merkle root: ${merkle_root} \n      MATCH: ${rootMatches}`);
+    // (7) Collate all debug info as block
+    this.logger.log(`[JS-MERKLE] PROOF CONSTRUCTION COMPLETE:`);
+    this.logger.log(`--- PROOF DATA ---`);
+    this.logger.log(`leaf:        ${query_leaf}`);
+    this.logger.log(`path:        [${path.join(',')}]`);
+    this.logger.log(`index:       ${leaf_idx}`);
+    this.logger.log(`root:        ${merkle_root}`);
+    this.logger.log(`path.length: ${path.length}`);
+    this.logger.log(`--- END PROOF DATA ---`);
+    return {
       merkle_leaf_index: leaf_idx,
-      merkle_path: path,               // Each as 0x...hex Fr
-      merkle_root: merkle_root,        // 0x...hex Fr
-      // commitment: query_leaf,          // 0x...hex Fr, matches circuit's poseidon
-      // public_inputs: [
-      //   Array.from(hexToBytesBE(merkle_root)),
-      //   Array.from(hexToBytesBE(query_leaf)),
-      // ],
+      merkle_path: path,
+      merkle_root: merkle_root,
     };
-
-    console.log("== Merkle proof ==", proofValue);
-    
-    // (7) Assemble public_inputs arrays (root, commitment) as 32B BE arrays
-    return proofValue
   }
 
-  /**
-   * Verifies a Merkle proof.
-   * @param leaf The leaf node to verify.
-   * @param proof The Merkle proof (array of sibling nodes).
-   * @param root The expected Merkle root.
-   * @returns True if the proof is valid, false otherwise.
-   */
+  // Merkle proof verification (simulate what the circuit does)
   async verifyMerkleProof(leaf: string, proof: string[], root: string, index: number): Promise<boolean> {
+    this.logger.log(`[JS-VERIFY] Verifying proof. leaf=${leaf} root=${root} index=${index} path.length=${proof.length}`);
     let computed = leaf;
     for (let i = 0; i < proof.length; i++) {
       const sibling = proof[i];
       const bit = (index >> i) & 1;
       const left = bit ? sibling : computed;
       const right = bit ? computed : sibling;
+      this.logger.log(`[JS-VERIFY] Level=${i} | bit=${bit} | left=${left} | right=${right}`);
       computed = await rustPoseidonHash([left, right]);
+      this.logger.log(`[JS-VERIFY] Level=${i} | computed hash: ${computed}`);
     }
-    return computed.toLowerCase() === root.toLowerCase();
+    const isValid = computed.toLowerCase() === root.toLowerCase();
+    this.logger.log(`[JS-VERIFY] FINAL: computed=${computed} | root=${root} | MATCH=${isValid}`);
+    return isValid;
+  }
+
+  async testPoseidon(inputs: string[]): Promise<string> {
+    const response = await fetch('http://172.29.14.163:8080/test-poseidon', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ inputs }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return data; // or data.hash, if you return an object from Rust
   }
 }

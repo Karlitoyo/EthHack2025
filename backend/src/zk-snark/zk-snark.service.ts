@@ -35,54 +35,60 @@ export class ZkSnarkService {
   async verifyProof({
     proof,
     public_inputs,
-  }: {
-    proof: number[];
-    public_inputs: number[][];
-  }) {
+}: {
+    proof: number[] | Uint8Array;
+    public_inputs: (number[] | Uint8Array)[];
+}) {
+    if (public_inputs.length !== 2)
+        throw new Error('Expected exactly 2 public inputs');
+    public_inputs.forEach((input, i) => {
+        if (input.length !== 32)
+            throw new Error(`Public input ${i} must be 32 bytes, got ${input.length}`);
+    });
     const res = await fetch(`${this.baseUrl}/verify-proof`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ proof, public_inputs }),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            proof: Array.from(proof),
+            public_inputs: public_inputs.map(input => Array.from(input))
+        }),
     });
-    // ...logging etc.
-    if (!res.ok) throw new Error(`ZKP verification error: ${res.status}`);
-    console.log(
-      'Sending payload to Rust microservice:',
-      JSON.stringify(res)
-    );
-    return res.json();
-  }
-
-  async generateTreatmentProof(payload: {
-    hospital_id: string;
-    treatment: string;
-    patient_id: string;
-    merkle_leaf_index: number;
-    merkle_path: string[];
-    merkle_root: string;
-  }) {
-    // --- VALIDATE payload ----
-    payload.merkle_path.forEach((h, i) =>
-      assertIs32ByteHex(`merkle_path[${i}]`, h),
-    );
-    assertIs32ByteHex('merkle_root', payload.merkle_root);
-
-    const rustUrl = `${this.baseUrl}/generate-proof`;
-    const response = await fetch(rustUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    console.log(JSON.stringify(payload, null, 2));
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Rust microservice error: ${response.status}: ${err}`);
+    if (!res.ok) {
+        throw new Error(`[ZKP-VERIFY] Error from Rust service: ${await res.text()}`);
     }
-    console.log(
-      'Sending payload to Rust microservice:',
-      JSON.stringify(response)
-    );
-    // JSON result contains ZK proof and public input
-    return await response.json();
-  }
+    return await res.json();
+}
+
+  // async generateTreatmentProof(payload: {
+  //   hospital_id: string;
+  //   treatment: string;
+  //   patient_id: string;
+  //   merkle_leaf_index: number;
+  //   merkle_path: string[];
+  //   merkle_root: string;
+  // }) {
+  //   // --- VALIDATE payload ----
+  //   payload.merkle_path.forEach((h, i) =>
+  //     assertIs32ByteHex(`merkle_path[${i}]`, h),
+  //   );
+  //   assertIs32ByteHex('merkle_root', payload.merkle_root);
+
+  //   const rustUrl = `${this.baseUrl}/generate-proof`;
+  //   const response = await fetch(rustUrl, {
+  //     method: 'POST',
+  //     headers: { 'Content-Type': 'application/json' },
+  //     body: JSON.stringify(payload),
+  //   });
+  //   console.log(JSON.stringify(payload, null, 2));
+  //   if (!response.ok) {
+  //     const err = await response.text();
+  //     throw new Error(`Rust microservice error: ${response.status}: ${err}`);
+  //   }
+  //   console.log(
+  //     'Sending payload to Rust microservice:',
+  //     JSON.stringify(response)
+  //   );
+  //   // JSON result contains ZK proof and public input
+  //   return await response.json();
+  // }
 }

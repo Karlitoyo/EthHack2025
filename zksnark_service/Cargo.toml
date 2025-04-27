@@ -5,9 +5,10 @@ edition = "2021"
 
 # Updated Cargo.toml
 [dependencies]
-bellperson = "0.26.0"
+bellperson = "0.26.0"            # or latest
+blstrs = { version = "0.7.0", features = ["__private_bench"] }
 neptune = "11.0.0"
-blstrs = "0.7.1"
+ff = "0.13"     
 actix-web = { version = "4.2", features = ["macros"] }
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
@@ -16,7 +17,6 @@ lazy_static = "1.4.0"
 hex = "0.4.3"
 sha2 = "0.10.2"
 typenum = "1.17.0"
-ff = "0.13.1"
 actix-web-codegen = "4.3.0"
 num-bigint = "0.4.6"
 num-traits = "0.2.19"
