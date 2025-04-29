@@ -30,6 +30,7 @@ DB_PORT=5432
 ETH_PROVIDER_URL=http://your_ethereum_node_rpc_url # e.g., Infura, Alchemy, or local node
 PRIVATE_KEY=your_ethereum_wallet_private_key # For submitting proofs to the contract
 ZK_PROOF_LOG_CONTRACT=your_deployed_zkprooflog_contract_address
+ZKP_SERVICE_URL=http://rust-zkp-service:port_number
 
 # Frontend (Optional - if needed by Next.js build/runtime)
 # NEXT_PUBLIC_...=...
