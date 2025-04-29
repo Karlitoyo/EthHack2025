@@ -60,11 +60,12 @@ export default function GenerateProof() {
         {proof && (
           <div className="mt-6">
             <h3 className="text-xl font-semibold mb-2">Proof Generated:</h3>
+            {/* Added max-h-64 and overflow-y-auto to constrain height and enable scrolling */}
             <textarea 
               readOnly 
               value={JSON.stringify(proof, null, 2)} 
               rows={8} 
-              className="textarea textarea-bordered w-full font-mono text-sm"
+              className="textarea textarea-bordered w-full font-mono text-sm max-h-64 overflow-y-auto" 
             />
           </div>
         )}

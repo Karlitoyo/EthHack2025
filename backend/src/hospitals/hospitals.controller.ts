@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, ConflictException, InternalServerErrorException } from '@nestjs/common'; // Import exceptions
 import { HospitalDataDto } from './dto/hospitalDataDtos';
 import { HospitalService } from './hospitals';
 
@@ -11,14 +11,19 @@ export class HospitalsController {
     @Post('create')
     async createHospital(@Body() hospitalDataDto: HospitalDataDto) {
         try {
-            // Here you would typically call a service to handle the logic
+            // The service method handles the check and throws ConflictException if needed.
             const hospital = await this.hospitalService.createHospital(hospitalDataDto);
-            console.log('Received hospital data:', hospitalDataDto);
+            console.log('Successfully created hospital:', hospitalDataDto.name);
             return hospital;
         }
         catch (error) {
-            console.error('Error creating hospital:', error);
-            throw new Error('Failed to create hospital');
+            console.error(`Error creating hospital: ${error.message}`, error.stack);
+            // Check if it's the specific ConflictException from the service
+            if (error instanceof ConflictException) {
+                throw error; // Re-throw the ConflictException directly
+            }
+            // For other unexpected errors, throw a generic server error
+            throw new InternalServerErrorException('An unexpected error occurred while creating the hospital.');
         }
     }
 }

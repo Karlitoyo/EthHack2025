@@ -2,7 +2,9 @@ import { useState } from 'react';
 
 const ZKComponent = () => {
     const [proof, setProof] = useState(null);
-    const [isValid, setIsValid] = useState(null);
+    const [isValid, setIsValid] = useState<boolean | null>(null);
+    const [modalMessage, setModalMessage] = useState('');
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     const [formData, setFormData] = useState({
         patientId: '',
@@ -21,7 +23,8 @@ const ZKComponent = () => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    const generateProof = async () => {
+    const generatePatient = async () => {
+        setIsModalOpen(false); // Close previous modal if open
         try {
             const response = await fetch('http://localhost:4001/patients/create', {
                 method: 'POST',
@@ -30,31 +33,50 @@ const ZKComponent = () => {
                 },
                 body: JSON.stringify(formData),
             });
-            const result = await response.json();
-            setProof(result);
+            // Try to parse JSON regardless of status, as error details might be in the body
+            let result;
+            try {
+                result = await response.json();
+                console.log("Backend response status:", response.status); // Log status
+                console.log("Backend response body:", result); // Log parsed body
+            } catch (jsonError) {
+                // Handle cases where the response is not JSON (e.g., plain text error)
+                console.error("Failed to parse JSON response:", jsonError);
+                const textResponse = await response.text(); // Try reading as text
+                console.error("Backend response text:", textResponse);
+                result = { message: textResponse || `Request failed with status: ${response.status}` }; // Create a fallback result
+            }
+
+            if (response.ok) {
+                setIsValid(true);
+                setModalMessage('Patient created successfully!');
+                // Optionally clear form or reset state here
+                // setFormData({ patientId: '', firstName: '', lastName: '', age: '', address: '', dateOfBirth: '', treatment: '', email: '', contactNumber: '' });
+            } else {
+                setIsValid(false);
+                console.error("Backend error response details:", result); // Log error specifically
+                // Use error message from backend if available, otherwise a more informative fallback
+                setModalMessage(result?.message || `Failed to create patient (Status: ${response.status})`);
+            }
+            setIsModalOpen(true); // Open modal after API call
         } catch (error) {
-            console.error('Proof generation error:', error);
+            console.error('Patient creation fetch/network error:', error); // Log catch error more specifically
+            setIsValid(false);
+            let displayMessage = 'An error occurred connecting to the server.';
+             if (error instanceof Error) {
+                 // Avoid showing potentially complex internal errors directly to the user
+                 console.error("Caught error details:", error.message);
+                 // You might customize this further based on error type if needed
+             }
+            setModalMessage(displayMessage);
+            setIsModalOpen(true); // Open modal on catch
         }
     };
 
-    const verifyProof = async () => {
-        console.log("Payload sent to Rust verify-proof:", JSON.stringify(proof, null, 2));
-        if (!proof) return alert('Generate proof first');
-        try {
-            const response = await fetch('http://localhost:4001/zk-snark/verify-proof', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(proof),
-            });
-            const result = await response.json();
-            console.log('Proof sent:', JSON.stringify(proof));
-            console.log('Public Input sent:', JSON.stringify(proof.public_input));
-            setIsValid(result);
-        } catch (error) {
-            console.error('Proof verification error:', error);
-        }
+    const closeModal = () => {
+        setIsModalOpen(false);
+        setModalMessage('');
+        setIsValid(null);
     };
 
     return (
@@ -193,23 +215,26 @@ const ZKComponent = () => {
                     </form>
 
                     <div className="flex gap-2 mb-4 mt-4">
-                        <button className="btn btn-primary" onClick={generateProof}>Generate Proof</button>
-                        <button className="btn btn-accent" onClick={verifyProof}>Verify Proof</button>
+                        <button className="btn btn-primary" onClick={generatePatient}>Create Patient</button>
                     </div>
-
-                    {isValid !== null && (
-                        <div className={`alert ${isValid ? 'alert-success' : 'alert-error'}`}>
-                            <div>
-                                {isValid ?
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> :
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                }
-                                <span>{isValid ? 'Valid' : 'Invalid'} proof</span>
-                            </div>
-                        </div>
-                    )}
                 </div>
             </div>
+
+            {/* Modal Implementation */}
+            {isModalOpen && (
+                <div className="modal modal-open">
+                    <div className="modal-box relative">
+                        <button onClick={closeModal} className="btn btn-sm btn-circle absolute right-2 top-2">✕</button>
+                        <h3 className={`text-lg font-bold ${isValid ? 'text-success' : 'text-error'}`}>
+                            {isValid ? 'Success!' : 'Error!'}
+                        </h3>
+                        <p className="py-4">{modalMessage}</p>
+                        <div className="modal-action">
+                            <button onClick={closeModal} className="btn">Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

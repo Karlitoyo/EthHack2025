@@ -1,6 +1,6 @@
 import { Patient } from './patient.entity';
 import { Repository } from 'typeorm';
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common'; // Import NotFoundException and ConflictException
 import { InjectRepository } from '@nestjs/typeorm';
 import { PatientDataDto } from './dto/patientDataDtos';
 import { Hospital } from '../hospitals/hospital.entity';
@@ -21,17 +21,35 @@ export class PatientService {
   ) {}
 
   async createPatient(createPatientDto: PatientDataDto): Promise<Patient> {
-    const { treatment } = createPatientDto;
+    const { patientId, treatment } = createPatientDto;
+
+    // Check if a patient with the same ID already exists
+    const existingPatient = await this.patientRepository.findOne({
+      where: { patientId },
+    });
+
+    if (existingPatient) {
+      // Throw ConflictException (HTTP 409)
+      throw new ConflictException(`Patient with ID "${patientId}" already exists.`);
+    }
 
     // Find a hospital that provides this treatment
     const matchingHospital = await this.hospitalRepository.findOne({
       where: { treatment: ILike(`%${treatment}%`) },
     });
 
-    // Create the patient and assign hospital if found
+    // Check if a hospital offering the treatment was found
+    if (!matchingHospital) {
+      // Throw NotFoundException (HTTP 404)
+      throw new NotFoundException(
+        `Treatment "${treatment}" not found in any hospital. Patient cannot be created. Please ensure the treatment exists.`,
+      );
+    }
+
+    // Create the patient and assign the found hospital
     const patient = this.patientRepository.create({
       ...createPatientDto,
-      hospital: matchingHospital || null,
+      hospital: matchingHospital, // Assign the found hospital
     });
 
     return this.patientRepository.save(patient);

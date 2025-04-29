@@ -2,7 +2,9 @@ import { useState } from 'react';
 
 const HospitalComponent = () => {
     const [proof, setProof] = useState(null);
-    const [isValid, setIsValid] = useState(null);
+    const [modalMessage, setModalMessage] = useState('');
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isSuccess, setIsSuccess] = useState<boolean | null>(null); // To track success/error for modal styling
 
     const [formData, setFormData] = useState({
         hospitalId: '',
@@ -19,7 +21,8 @@ const HospitalComponent = () => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    const generateProof = async () => {
+    const generateHospital = async () => {
+        setIsModalOpen(false); // Close previous modal if open
         try {
             const response = await fetch('http://localhost:4001/hospitals/create', {
                 method: 'POST',
@@ -28,11 +31,42 @@ const HospitalComponent = () => {
                 },
                 body: JSON.stringify(formData),
             });
-            const result = await response.json();
-            setProof(result);
+
+            let result;
+            try {
+                result = await response.json();
+                console.log("Backend response status:", response.status);
+                console.log("Backend response body:", result);
+            } catch (jsonError) {
+                console.error("Failed to parse JSON response:", jsonError);
+                const textResponse = await response.text();
+                console.error("Backend response text:", textResponse);
+                result = { message: textResponse || `Request failed with status: ${response.status}` };
+            }
+
+            if (response.ok) {
+                setIsSuccess(true);
+                setModalMessage('Hospital created successfully!');
+                // Optionally clear form:
+                // setFormData({ hospitalId: '', name: '', location: '', treatment: '', contactNumber: '', adminName: '', capacity: '' });
+            } else {
+                setIsSuccess(false);
+                console.error("Backend error response details:", result);
+                setModalMessage(result?.message || `Failed to create hospital (Status: ${response.status})`);
+            }
+            setIsModalOpen(true);
         } catch (error) {
-            console.error('Proof generation error:', error);
+            console.error('Hospital creation fetch/network error:', error);
+            setIsSuccess(false);
+            setModalMessage('An error occurred connecting to the server.');
+            setIsModalOpen(true);
         }
+    };
+
+    const closeModal = () => {
+        setIsModalOpen(false);
+        setModalMessage('');
+        setIsSuccess(null);
     };
 
     return (
@@ -138,22 +172,26 @@ const HospitalComponent = () => {
                     </form>
 
                     <div className="flex gap-2 mb-4 mt-4">
-                        <button className="btn btn-primary" onClick={generateProof}>Create Hospital</button>
+                        <button className="btn btn-primary" onClick={generateHospital}>Create Hospital</button>
                     </div>
-
-                    {isValid !== null && (
-                        <div className={`alert ${isValid ? 'alert-success' : 'alert-error'}`}>
-                            <div>
-                                {isValid ?
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> :
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                }
-                                <span>{isValid ? 'Valid' : 'Invalid'} proof</span>
-                            </div>
-                        </div>
-                    )}
                 </div>
             </div>
+
+            {/* Modal Implementation */}
+            {isModalOpen && (
+                <div className="modal modal-open">
+                    <div className="modal-box relative">
+                        <button onClick={closeModal} className="btn btn-sm btn-circle absolute right-2 top-2">✕</button>
+                        <h3 className={`text-lg font-bold ${isSuccess ? 'text-success' : 'text-error'}`}>
+                            {isSuccess ? 'Success!' : 'Error!'}
+                        </h3>
+                        <p className="py-4">{modalMessage}</p>
+                        <div className="modal-action">
+                            <button onClick={closeModal} className="btn">Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
