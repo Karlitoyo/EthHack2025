@@ -31,7 +31,7 @@ export default function GenerateProof() {
 
     try {
       // 1. Generate proof
-      const res = await fetch('http://localhost:4001/zk-snark/generate-proof', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/zk-snark/generate-proof`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ patientId, treatment })
@@ -63,7 +63,7 @@ export default function GenerateProof() {
     setIsSubmittingProof(true);
 
     try {
-      const submitRes = await fetch('http://localhost:4001/ethereum/submit', {
+      const submitRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/ethereum/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

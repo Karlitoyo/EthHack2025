@@ -8,7 +8,7 @@ export default function TreatmentSearch() {
     const fetchTreatmentData = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`http://localhost:4001/patients/treatment/${treatment}`);
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/patients/treatment/${treatment}`);
             const json = await res.json();
             setData(json);
         } catch (err) {

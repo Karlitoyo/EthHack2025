@@ -8,7 +8,6 @@ import { assertIs32ByteHex } from 'src/merkle/utils';
 
 @Injectable()
 export class ZkSnarkService {
-  private baseUrl = 'http://172.29.14.163:8080';
 
   constructor(
     @InjectRepository(Patient)
@@ -23,7 +22,7 @@ export class ZkSnarkService {
     treatment: string;
     patient_id: string;
   }) {
-    const res = await fetch(`${this.baseUrl}/generate-proof`, {
+    const res = await fetch(`${process.env.ZKP_SERVICE_URL}/generate-proof`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -45,7 +44,7 @@ export class ZkSnarkService {
         if (input.length !== 32)
             throw new Error(`Public input ${i} must be 32 bytes, got ${input.length}`);
     });
-    const res = await fetch(`${this.baseUrl}/verify-proof`, {
+    const res = await fetch(`${process.env.ZKP_SERVICE_URL}/verify-proof`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

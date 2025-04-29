@@ -10,7 +10,6 @@ import { toMerklePatientRow } from '../merkle/utils';
 import { MERKLE_PATH_LEN } from '../merkle/constants/constants';
 @Injectable()
 export class PatientService {
-  private baseUrl = 'http://172.29.14.163:8080';
 
   constructor(
     @InjectRepository(Patient)
@@ -247,7 +246,7 @@ export class PatientService {
     console.log('[6] Rust ZKP payload:', JSON.stringify(payload, null, 2));
 
     // 7. POST to Rust ZKP microservice
-    const rustUrl = `${this.baseUrl}/generate-proof`;
+    const rustUrl = `${process.env.ZKP_SERVICE_URL}/generate-proof`;
     console.log(`[7] Sending POST request to ${rustUrl}`);
     const response = await fetch(rustUrl, {
       method: 'POST',

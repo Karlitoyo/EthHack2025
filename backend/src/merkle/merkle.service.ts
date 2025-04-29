@@ -84,8 +84,15 @@ export class MerkleService {
       const next: string[] = [];
       this.logger.log(`[JS-MERKLE] Building LEVEL=${depth} with ${cur.length} nodes`);
       for (let i = 0; i < cur.length; i += 2) {
-        const left = cur[i], right = cur[i + 1];
+        const left = cur[i];
+        // Handle odd number of nodes by duplicating the last one
+        const right = (i + 1 < cur.length) ? cur[i + 1] : left;
         this.logger.log(`[JS-MERKLE]   Hashing: [${i},${i + 1}] left=${left} right=${right}`);
+        // Ensure both inputs are defined before hashing
+        if (left === undefined || right === undefined) {
+             this.logger.error(`[JS-MERKLE] ERROR: Undefined input at level ${depth}, index ${i}. Left: ${left}, Right: ${right}`);
+             throw new Error(`Undefined input during Merkle tree construction at level ${depth}, index ${i}`);
+        }
         const parent = await rustPoseidonHash([left, right]);
         this.logger.log(`[JS-MERKLE]   Result: parent=${parent}`);
         next.push(parent);
@@ -155,7 +162,7 @@ export class MerkleService {
   }
 
   async testPoseidon(inputs: string[]): Promise<string> {
-    const response = await fetch('http://172.29.14.163:8080/test-poseidon', {
+    const response = await fetch(`${process.env.ZKP_SERVICE_URL}/test-poseidon`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

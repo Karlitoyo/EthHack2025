@@ -26,7 +26,7 @@ const ZKComponent = () => {
     const generatePatient = async () => {
         setIsModalOpen(false); // Close previous modal if open
         try {
-            const response = await fetch('http://localhost:4001/patients/create', {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/patients/create`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

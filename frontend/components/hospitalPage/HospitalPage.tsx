@@ -24,7 +24,7 @@ const HospitalComponent = () => {
     const generateHospital = async () => {
         setIsModalOpen(false); // Close previous modal if open
         try {
-            const response = await fetch('http://localhost:4001/hospitals/create', {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/hospitals/create`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
