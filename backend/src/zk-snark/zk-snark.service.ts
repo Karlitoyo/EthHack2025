@@ -58,37 +58,4 @@ export class ZkSnarkService {
     }
     return await res.json();
 }
-
-  // async generateTreatmentProof(payload: {
-  //   hospital_id: string;
-  //   treatment: string;
-  //   patient_id: string;
-  //   merkle_leaf_index: number;
-  //   merkle_path: string[];
-  //   merkle_root: string;
-  // }) {
-  //   // --- VALIDATE payload ----
-  //   payload.merkle_path.forEach((h, i) =>
-  //     assertIs32ByteHex(`merkle_path[${i}]`, h),
-  //   );
-  //   assertIs32ByteHex('merkle_root', payload.merkle_root);
-
-  //   const rustUrl = `${this.baseUrl}/generate-proof`;
-  //   const response = await fetch(rustUrl, {
-  //     method: 'POST',
-  //     headers: { 'Content-Type': 'application/json' },
-  //     body: JSON.stringify(payload),
-  //   });
-  //   console.log(JSON.stringify(payload, null, 2));
-  //   if (!response.ok) {
-  //     const err = await response.text();
-  //     throw new Error(`Rust microservice error: ${response.status}: ${err}`);
-  //   }
-  //   console.log(
-  //     'Sending payload to Rust microservice:',
-  //     JSON.stringify(response)
-  //   );
-  //   // JSON result contains ZK proof and public input
-  //   return await response.json();
-  // }
 }

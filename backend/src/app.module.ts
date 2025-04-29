@@ -13,6 +13,10 @@ import { ZkSnarkModule } from './zk-snark/zk-snark.module';
 import { ZkSnarkController } from './zk-snark/zk-snark.controller';
 import { MerkleController } from './merkle/merkle.controller';
 import { MerkleModule } from './merkle/merkle.module';
+import { EthereumController } from './ethereum/ethereum.controller';
+import { EthereumService } from './ethereum/ethereum.service';
+import { Ethereum } from './ethereum/ethereum';
+import { EthereumModule } from './ethereum/ethereum.module';
 
 @Module({
   imports: [
@@ -31,6 +35,7 @@ import { MerkleModule } from './merkle/merkle.module';
     ZkSnarkModule,
     ConfigModule.forRoot(),
     MerkleModule,
+    EthereumModule,
   ],
   controllers: [
     AppController,
@@ -38,7 +43,8 @@ import { MerkleModule } from './merkle/merkle.module';
     PatientsController,
     ZkSnarkController,
     MerkleController,
+    EthereumController,
   ],
-  providers: [AppService],
+  providers: [AppService, EthereumService, Ethereum],
 })
 export class AppModule {}
