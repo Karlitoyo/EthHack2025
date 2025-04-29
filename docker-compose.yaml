@@ -1,13 +1,23 @@
 services:
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: . # Change context to root directory
+      dockerfile: ./backend/Dockerfile # Update Dockerfile path
+    # Temporarily switch to build and run for debugging
     command: "npm run start:dev"
+    env_file:
+      - .env
     ports:
       - "4001:4001"
     volumes:
-      - ./backend:/app
+      # Restore the source code volume mount for hot-reloading
+      - ./backend/src:/app/src
+      # Keep other mounts
+      - ./backend/package.json:/app/package.json
+      - ./backend/package-lock.json:/app/package-lock.json
+      - ./backend/nest-cli.json:/app/nest-cli.json
+      - ./backend/tsconfig.json:/app/tsconfig.json
+      - ./backend/tsconfig.build.json:/app/tsconfig.build.json
     environment:
       DATABASE_URL: ${DATABASE_URL}
       DB_HOST: ${DB_HOST}

@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { EthereumController } from './ethereum.controller';
-import { EthereumService } from './ethereum.service';
+import { ZkProofLogController } from './ethereum.controller';
+import { ZkProofLogService } from './ethereum.service';
 @Module({
-    controllers: [EthereumController],
-    providers: [EthereumService],
-    exports: [EthereumService],
+    controllers: [ZkProofLogController],
+    providers: [ZkProofLogService],
+    exports: [ZkProofLogService],
     imports: []
 })
 export class EthereumModule {}

@@ -1,19 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { ethers } from 'ethers';
-import abi from '../../../ethereum/src/abi/ZKProofLog.json'; // Adjust the path to your ABI file
+import * as abi from '../../abi/ZKProofLog.json';
 
 @Injectable()
 export class ZkProofLogService {
   private provider: ethers.JsonRpcProvider;
   private signer: ethers.Wallet;
   private contract: ethers.Contract;
-  
+
   constructor() {
+    const privateKey = process.env.PRIVATE_KEY;
+
     this.provider = new ethers.JsonRpcProvider(process.env.ETH_PROVIDER_URL);
-    this.signer = new ethers.Wallet(process.env.PRIVATE_KEY, this.provider);
+    this.signer = new ethers.Wallet(privateKey, this.provider);
     this.contract = new ethers.Contract(
-      process.env.ZK_PROOF_LOG_CONTRACT, 
-      abi.abi, // Access the abi property from the imported JSON
+      process.env.ZK_PROOF_LOG_CONTRACT,
+      abi.abi,
       this.signer
     );
   }
