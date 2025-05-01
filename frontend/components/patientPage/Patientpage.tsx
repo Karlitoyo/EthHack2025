@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const ZKComponent = () => {
+const PatientComponent = () => {
     const [proof, setProof] = useState(null);
     const [isValid, setIsValid] = useState<boolean | null>(null);
     const [modalMessage, setModalMessage] = useState('');
@@ -33,14 +33,12 @@ const ZKComponent = () => {
                 },
                 body: JSON.stringify(formData),
             });
-            // Try to parse JSON regardless of status, as error details might be in the body
-            let result;
+            let result: { message?: string };
             try {
                 result = await response.json();
                 console.log("Backend response status:", response.status); // Log status
                 console.log("Backend response body:", result); // Log parsed body
             } catch (jsonError) {
-                // Handle cases where the response is not JSON (e.g., plain text error)
                 console.error("Failed to parse JSON response:", jsonError);
                 const textResponse = await response.text(); // Try reading as text
                 console.error("Backend response text:", textResponse);
@@ -50,12 +48,9 @@ const ZKComponent = () => {
             if (response.ok) {
                 setIsValid(true);
                 setModalMessage('Patient created successfully!');
-                // Optionally clear form or reset state here
-                // setFormData({ patientId: '', firstName: '', lastName: '', age: '', address: '', dateOfBirth: '', treatment: '', email: '', contactNumber: '' });
             } else {
                 setIsValid(false);
                 console.error("Backend error response details:", result); // Log error specifically
-                // Use error message from backend if available, otherwise a more informative fallback
                 setModalMessage(result?.message || `Failed to create patient (Status: ${response.status})`);
             }
             setIsModalOpen(true); // Open modal after API call
@@ -64,9 +59,7 @@ const ZKComponent = () => {
             setIsValid(false);
             let displayMessage = 'An error occurred connecting to the server.';
              if (error instanceof Error) {
-                 // Avoid showing potentially complex internal errors directly to the user
                  console.error("Caught error details:", error.message);
-                 // You might customize this further based on error type if needed
              }
             setModalMessage(displayMessage);
             setIsModalOpen(true); // Open modal on catch
@@ -239,4 +232,4 @@ const ZKComponent = () => {
     );
 };
 
-export default ZKComponent;
+export default PatientComponent;

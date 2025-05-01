@@ -1,10 +1,9 @@
 import Layout from "../components/Layout";
-import HospitalComponent from "../components/hospitalPage/HospitalPage";
-
+import PatientComponent from "../components/patientPage/Patientpage";
 
 const HospitalPage = () => (
   <Layout title="About | Next.js + TypeScript Example">
-    <HospitalComponent />
+    <PatientComponent />
   </Layout>
 );
 

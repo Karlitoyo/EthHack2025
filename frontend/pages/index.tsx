@@ -1,9 +1,9 @@
 import Layout from "../components/Layout";
-import ZKComponent from "../components/patientPage/Patientpage";
+import HospitalPage from "../components/hospitalPage/HospitalPage";
 
 const IndexPage = () => (
-  <Layout title="Home | Next.js + TypeScript Example">
-    < ZKComponent />
+  <Layout title="Hospital | ZK Medical Data">
+    <HospitalPage />
   </Layout>
 );
 

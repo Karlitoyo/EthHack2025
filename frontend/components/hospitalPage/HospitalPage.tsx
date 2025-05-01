@@ -1,7 +1,6 @@
 import { useState } from 'react';
 
 const HospitalComponent = () => {
-    const [proof, setProof] = useState(null);
     const [modalMessage, setModalMessage] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSuccess, setIsSuccess] = useState<boolean | null>(null); // To track success/error for modal styling
@@ -32,7 +31,7 @@ const HospitalComponent = () => {
                 body: JSON.stringify(formData),
             });
 
-            let result;
+            let result: { message?: string; [key: string]: any };
             try {
                 result = await response.json();
                 console.log("Backend response status:", response.status);
@@ -47,8 +46,6 @@ const HospitalComponent = () => {
             if (response.ok) {
                 setIsSuccess(true);
                 setModalMessage('Hospital created successfully!');
-                // Optionally clear form:
-                // setFormData({ hospitalId: '', name: '', location: '', treatment: '', contactNumber: '', adminName: '', capacity: '' });
             } else {
                 setIsSuccess(false);
                 console.error("Backend error response details:", result);
