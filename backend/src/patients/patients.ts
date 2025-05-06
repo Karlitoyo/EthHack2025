@@ -90,15 +90,18 @@ export class PatientService {
       where: { treatment: ILike(`%${treatment}%`) },
     });
 
-    // Find all patients with this treatment
+    // Find all patients with this treatment and their assigned hospital
     const patients = await this.patientRepository.find({
       where: { treatment: ILike(`%${treatment}%`) },
+      relations: ['hospital'], // Ensure the hospital relation is loaded
     });
 
     // Pair hospitals with matching patients
     const result = hospitals.map((hospital) => {
       const relatedPatients = patients.filter(
-        (p) => p.treatment?.toLowerCase() === hospital.treatment?.toLowerCase(),
+        (p) =>
+          p.treatment?.toLowerCase() === hospital.treatment?.toLowerCase() &&
+          p.hospital?.id === hospital.id, // Only include patients assigned to this hospital
       );
 
       return {
