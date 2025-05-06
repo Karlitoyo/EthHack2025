@@ -1,1 +1,1 @@
-export const MERKLE_PATH_LEN = 3;
+export const MERKLE_PATH_LEN = 4;

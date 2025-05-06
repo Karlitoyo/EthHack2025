@@ -61,7 +61,15 @@ export class MerkleService {
     // (2) Padding
     this.logger.log(`[JS-PROOF] (2) Padding leaves to ${1 << MERKLE_PATH_LEN}`);
     const initialLeafCount = leaves.length;
-    while (leaves.length < (1 << MERKLE_PATH_LEN)) {
+    const targetLeafCount = 1 << MERKLE_PATH_LEN;
+
+    if (initialLeafCount > targetLeafCount) {
+      this.logger.error(`[JS-MERKLE] Number of leaves (${initialLeafCount}) exceeds capacity (${targetLeafCount}) for MERKLE_PATH_LEN=${MERKLE_PATH_LEN}.`);
+      this.logger.error(`[JS-MERKLE] The ZKP circuit is fixed for ${targetLeafCount} leaves. To process more patients in a single tree, MERKLE_PATH_LEN must be increased in both backend and ZKP service, and ZKP parameters regenerated.`);
+      throw new Error(`Number of leaves (${initialLeafCount}) exceeds capacity (${targetLeafCount}) for MERKLE_PATH_LEN=${MERKLE_PATH_LEN}.`);
+    }
+
+    while (leaves.length < targetLeafCount) {
       const dummy_fr0 = await rustStringToFr("DUMMY");
       const dummy_fr1 = await rustStringToFr("DUMMY");
       const dummy_fr2 = await rustStringToFr(String(leaves.length));
@@ -78,30 +86,37 @@ export class MerkleService {
     this.logger.log(`[JS-PROOF] Found query leaf at index: ${leaf_idx}`);
     // (4) Build tree
     this.logger.log(`[JS-PROOF] (4) Building Merkle tree with MERKLE_PATH_LEN=${MERKLE_PATH_LEN}`);
-    const levels: string[][] = [leaves];
-    let cur = leaves;
+    const levels: string[][] = [];
+    levels.push(leaves); // levels[0] are the initial leaves
+
+    let currentNodes = leaves;
     for (let depth = 0; depth < MERKLE_PATH_LEN; depth++) {
-      const next: string[] = [];
-      this.logger.log(`[JS-MERKLE] Building LEVEL=${depth} with ${cur.length} nodes`);
-      for (let i = 0; i < cur.length; i += 2) {
-        const left = cur[i];
-        // Handle odd number of nodes by duplicating the last one
-        const right = (i + 1 < cur.length) ? cur[i + 1] : left;
-        this.logger.log(`[JS-MERKLE]   Hashing: [${i},${i + 1}] left=${left} right=${right}`);
-        // Ensure both inputs are defined before hashing
-        if (left === undefined || right === undefined) {
-             this.logger.error(`[JS-MERKLE] ERROR: Undefined input at level ${depth}, index ${i}. Left: ${left}, Right: ${right}`);
-             throw new Error(`Undefined input during Merkle tree construction at level ${depth}, index ${i}`);
-        }
-        const parent = await rustPoseidonHash([left, right]);
-        this.logger.log(`[JS-MERKLE]   Result: parent=${parent}`);
-        next.push(parent);
+      const nextNodes: string[] = [];
+      this.logger.log(`[JS-MERKLE] Building tree LEVEL=${depth} (nodes above leaves) with ${currentNodes.length} current nodes`);
+      if (currentNodes.length === 0 && depth < MERKLE_PATH_LEN) {
+        this.logger.error(`[JS-MERKLE] Error: currentNodes is empty at depth ${depth} but expected more levels. This should not happen if padding is correct.`);
+        throw new Error("Merkle tree construction failed: premature empty level.");
       }
-      levels.push(next);
-      cur = next;
+      for (let i = 0; i < currentNodes.length; i += 2) {
+        const left = currentNodes[i];
+        // Handle odd number of nodes by duplicating the last one if necessary
+        const right = (i + 1 < currentNodes.length) ? currentNodes[i + 1] : left;
+        const hash = await rustPoseidonHash([left, right]);
+        this.logger.verbose(`[JS-MERKLE] Tree build: L=${depth}, pair ${i/2}: H(${left.substring(0,10)}..., ${right.substring(0,10)}...) -> ${hash.substring(0,10)}...`);
+        nextNodes.push(hash);
+      }
+      levels.push(nextNodes); // levels[depth+1] will be the newly computed hashes
+      currentNodes = nextNodes;
     }
-    const merkle_root = cur[0];
-    this.logger.log(`[JS-MERKLE] Merkle root: ${merkle_root}`);
+
+    // The root is the single element in the last computed level of hashes
+    // levels[MERKLE_PATH_LEN] should contain the root
+    if (!levels[MERKLE_PATH_LEN] || levels[MERKLE_PATH_LEN].length !== 1) {
+        this.logger.error(`[JS-MERKLE] Error: Root level (levels[${MERKLE_PATH_LEN}]) not found or does not contain a single element. Expected 1 element, found: ${levels[MERKLE_PATH_LEN]?.length}. Levels dump: ${JSON.stringify(levels)}`);
+        throw new Error("Merkle tree construction failed: root not found or incorrect number of elements at root level.");
+    }
+    const merkle_root = levels[MERKLE_PATH_LEN][0];
+    this.logger.log(`[JS-MERKLE] Merkle root computed: ${merkle_root}`);
     // (5) Merkle path
     this.logger.log(`[JS-PROOF] (5) Computing Merkle path for leaf_index=${leaf_idx}`);
     let idx = leaf_idx;

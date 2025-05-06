@@ -19,7 +19,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
 use typenum::{U2, U3};
-pub const MERKLE_PATH_LEN: usize = 3; // For a tree with 16 leaves
+pub const MERKLE_PATH_LEN: usize = 4; // For a tree with 16 leaves
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ProofRequest {
@@ -118,7 +118,7 @@ fn circuit_hash() -> Vec<u8> {
     use sha2::{Digest, Sha256};
     // Compose anything that would change if the circuit changes!
     let mut hasher = Sha256::new();
-    hasher.update(b"poseidon-merkle-circuit-v5.9.8"); // Bump this for changes!
+    hasher.update(b"poseidon-merkle-circuit-v5.9.9"); // Bump this for changes!
     hasher.update(b"MERKLE_PATH_LEN");
     hasher.update(&MERKLE_PATH_LEN.to_le_bytes());
     hasher.finalize().to_vec()
