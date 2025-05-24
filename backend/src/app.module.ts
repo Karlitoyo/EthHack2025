@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { HospitalsModule } from './hospitals/hospitals.module';
-import { PatientsModule } from './patients/patients.module';
+import { CountryModule } from './country/country.module';
+import { CitizenModule } from './citizen/citizen.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Hospital } from './hospitals/hospital.entity';
-import { Patient } from './patients/patient.entity';
+import { Country } from './country/country.entity';
+import { Citizen } from './citizen/citizen.entity';
 import { ConfigModule } from '@nestjs/config';
-import { HospitalsController } from './hospitals/hospitals.controller';
-import { PatientsController } from './patients/patients.controller';
+import { CountryController } from './country/country.controller';
+import { CitizenController } from './citizen/citizen.controller';
 import { ZkSnarkModule } from './zk-snark/zk-snark.module';
 import { ZkSnarkController } from './zk-snark/zk-snark.controller';
 import { MerkleController } from './merkle/merkle.controller';
@@ -27,11 +27,11 @@ import { EthereumModule } from './ethereum/ethereum.module';
       username: process.env.POSTGRES_USER,
       password: process.env.POSTGRES_PASSWORD,
       database: process.env.POSTGRES_DB,
-      entities: [Hospital, Patient],
+      entities: [Country, Citizen],
       synchronize: true,
     }),
-    HospitalsModule,
-    PatientsModule,
+    CountryModule,
+    CitizenModule,
     ZkSnarkModule,
     ConfigModule.forRoot(),
     MerkleModule,
@@ -39,8 +39,8 @@ import { EthereumModule } from './ethereum/ethereum.module';
   ],
   controllers: [
     AppController,
-    HospitalsController,
-    PatientsController,
+    CountryController,
+    CitizenController,
     ZkSnarkController,
     MerkleController,
     ZkProofLogController,

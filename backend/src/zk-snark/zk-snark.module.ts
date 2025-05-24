@@ -3,15 +3,15 @@ import { Module } from '@nestjs/common';
 import { ZkSnarkService } from './zk-snark.service';
 import { ZkSnarkController } from './zk-snark.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Patient } from '../patients/patient.entity';
-import { Hospital } from '../hospitals/hospital.entity';
-import { PatientService } from 'src/patients/patients';
+import { Citizen } from '../citizen/citizen.entity';
+import { Country } from '../country/country.entity';
+import { CitizenService } from 'src/citizen/citizen';
 import { MerkleService } from '../merkle/merkle.service';
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Patient, Hospital]),
+    TypeOrmModule.forFeature([Citizen, Country]),
   ],
-  providers: [ZkSnarkService, PatientService, MerkleService],
+  providers: [ZkSnarkService, CitizenService, MerkleService],
   controllers: [ZkSnarkController],
   exports: [ZkSnarkService],    
 })

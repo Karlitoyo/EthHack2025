@@ -1,13 +1,13 @@
 import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
 import { ZkSnarkService } from './zk-snark.service';
-import { PatientService } from '../patients/patients';
+import { CitizenService } from '../citizen/citizen';
 import { GenerateTreatmentProofDto, VerifyProofDto } from './dto/generateTreatementProofDto';
 
 @Controller('zk-snark')
 export class ZkSnarkController {
   constructor(
     private readonly zkSnarkService: ZkSnarkService,
-    private readonly patientService: PatientService
+    private readonly citizenService: CitizenService
   ) {}
 
   @Post('generate-proof')
@@ -16,7 +16,7 @@ export class ZkSnarkController {
       throw new BadRequestException('patientId, treatment, and hospitalId are required');
     }
     // Call the service as before
-    return await this.patientService.generateTreatmentProof(dto.patientId, dto.treatment);
+    return await this.citizenService.generateTreatmentProof(dto.patientId, dto.treatment);
   }
 
   @Post('verify-proof')

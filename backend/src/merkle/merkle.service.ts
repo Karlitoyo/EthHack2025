@@ -15,10 +15,10 @@ export class MerkleService {
 
   // LEAF
   async patientLeaf(p: PatientRow): Promise<string> {
-    this.logger.verbose(`[JS-MERKLE] Creating leaf for patient_id=[${p.patient_id}] hospital_id=[${p.hospital_id}] treatment=[${p.treatment}]`);
-    const fr_hospital_id = await rustStringToFr(p.hospital_id);
-    const fr_treatment   = await rustStringToFr(p.treatment);
-    const fr_patient_id  = await rustStringToFr(p.patient_id);
+    this.logger.verbose(`[JS-MERKLE] Creating leaf for patient_id=[${p.citizen_id}] hospital_id=[${p.country_id}] treatment=[${p.relation}]`);
+    const fr_hospital_id = await rustStringToFr(p.country_id);
+    const fr_treatment   = await rustStringToFr(p.relation);
+    const fr_patient_id  = await rustStringToFr(p.citizen_id);
     this.logger.verbose(`[JS-MERKLE] Field representations: hospital_id: ${fr_hospital_id} treatment: ${fr_treatment} patient_id: ${fr_patient_id}`);
     const leaf = await rustPoseidonHash([fr_hospital_id, fr_treatment, fr_patient_id]);
     this.logger.log(`[JS-MERKLE] LEAF: ${leaf}`);
@@ -48,14 +48,14 @@ export class MerkleService {
   }
 
   // Main proof generator
-  async getProof(allPatients: PatientRow[], queryPatient: PatientRow) {
-    this.logger.log(`[JS-PROOF] Generating proof for patient ${queryPatient.patient_id} out of ${allPatients.length} patients`);
+  async getProof(allPatients: PatientRow[], queryCitizen: PatientRow) {
+    this.logger.log(`[JS-PROOF] Generating proof for patient ${queryCitizen.citizen_id} out of ${allPatients.length} patients`);
     // (1) Compute leaves
     this.logger.log(`[JS-PROOF] (1) Computing leaf values for ${allPatients.length} patients`);
     const leaves: string[] = [];
     for (const p of allPatients) {
       const leaf = await this.patientLeaf(p);
-      this.logger.log(`[JS-PROOF] Leaf for patient_id=${p.patient_id}: ${leaf}`);
+      this.logger.log(`[JS-PROOF] Leaf for patient_id=${p.citizen_id}: ${leaf}`);
       leaves.push(leaf);
     }
     // (2) Padding
@@ -79,8 +79,8 @@ export class MerkleService {
     }
     this.logger.log(`[JS-PROOF] Padded leaves count: ${leaves.length}`);
     // (3) Query leaf
-    this.logger.log(`[JS-PROOF] (3) Get query leaf for patient: ${queryPatient.patient_id}`);
-    const query_leaf = await this.patientLeaf(queryPatient);
+    this.logger.log(`[JS-PROOF] (3) Get query leaf for patient: ${queryCitizen.citizen_id}`);
+    const query_leaf = await this.patientLeaf(queryCitizen);
     const leaf_idx = leaves.findIndex((x) => x.toLowerCase() === query_leaf.toLowerCase());
     if (leaf_idx === -1) throw new Error("Query patient leaf not found in tree!");
     this.logger.log(`[JS-PROOF] Found query leaf at index: ${leaf_idx}`);

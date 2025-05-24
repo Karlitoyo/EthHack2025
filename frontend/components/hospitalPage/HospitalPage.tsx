@@ -1,9 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+interface CountryForSelect {
+    countryId: string;
+    name: string;
+    relationship: string;
+}
 
 const HospitalComponent = () => {
     const [modalMessage, setModalMessage] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSuccess, setIsSuccess] = useState<boolean | null>(null); // To track success/error for modal styling
+    const [availableParentCountries, setAvailableParentCountries] = useState<CountryForSelect[]>([]);
 
     const [formData, setFormData] = useState({
         hospitalId: '',
@@ -13,8 +20,27 @@ const HospitalComponent = () => {
         contactNumber: '',
         adminName: '',
         capacity: '',
+        parentCountryId: '', // Added for parent selection
     });
     console.log('Form data:', formData);
+
+    useEffect(() => {
+        const fetchCountriesForSelect = async () => {
+            try {
+                const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/countries`);
+                if (response.ok) {
+                    const data: CountryForSelect[] = await response.json();
+                    setAvailableParentCountries(data);
+                } else {
+                    console.error('Failed to fetch countries for parent selection');
+                }
+            } catch (error) {
+                console.error('Error fetching countries for parent selection:', error);
+            }
+        };
+
+        fetchCountriesForSelect();
+    }, []);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -22,13 +48,26 @@ const HospitalComponent = () => {
 
     const generateHospital = async () => {
         setIsModalOpen(false); // Close previous modal if open
+
+        // Transform formData to match backend DTO
+        const payload = {
+            countryId: formData.hospitalId, // Map hospitalId to countryId
+            name: formData.name,
+            location: formData.location,
+            relationship: formData.treatment, // Map treatment to relationship
+            contactNumber: formData.contactNumber,
+            adminName: formData.adminName,
+            capacity: formData.capacity,
+            parentCountryId: formData.parentCountryId || undefined, // Send if selected, otherwise undefined
+        };
+
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/hospitals/create`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/countries/create`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(formData),
+                body: JSON.stringify(payload), // Send the transformed payload
             });
 
             let result: { message?: string; [key: string]: any };
@@ -70,8 +109,8 @@ const HospitalComponent = () => {
         <div className="flex flex-col items-center justify-center min-h-screen bg-base-200 p-4">
             <div className="card w-full max-w-lg bg-base-100 shadow-xl">
                 <div className="card-body">
-                    <h1 className="card-title text-2xl font-bold">ZK-SNARK Example</h1>
-                    <p className="mb-4">Generate Hospital Record.</p>
+                    <h1 className="card-title text-2xl font-bold">ZK-SNARK Family Records</h1>
+                    <p className="mb-4">Generate Family Record.</p>
 
                     <form className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -159,13 +198,33 @@ const HospitalComponent = () => {
                                 value={formData.treatment}
                                 onChange={handleChange}
                                 required>
-                                <option disabled value="">Select Treatment</option>
-                                <option>Injury</option>
-                                <option>Check up</option>
-                                <option>Burn</option>
-                                <option>Fracture</option>
-                                <option>Dietary</option>
+                                <option disabled value="">Select Relationship</option>
+                                <option>Father</option>
+                                <option>Mother</option>
+                                <option>GrandMother</option>
+                                <option>GrandFather</option>
+                                <option>GreatGrandMother</option>
+                                <option>GreatGrandFather</option>
                             </select>
+                        {/* Parent Country Selection Dropdown */}
+                        <div className="form-control w-full mt-4">
+                            <label className="label">
+                                <span className="label-text font-medium">Parent Family Unit (Optional)</span>
+                            </label>
+                            <select
+                                name="parentCountryId"
+                                value={formData.parentCountryId}
+                                onChange={handleChange}
+                                className="select select-bordered w-full"
+                            >
+                                <option value="">None (This is a root family unit)</option>
+                                {availableParentCountries.map((country) => (
+                                    <option key={country.countryId} value={country.countryId}>
+                                        {country.name} ({country.countryId}) - {country.relationship}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
                     </form>
 
                     <div className="flex gap-2 mb-4 mt-4">

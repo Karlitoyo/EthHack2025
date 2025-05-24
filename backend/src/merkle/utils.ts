@@ -1,5 +1,5 @@
 // src/merkle/utils.ts
-import { Patient } from '../patients/patient.entity';
+import { Citizen } from '../citizen/citizen.entity';
 import { PatientRow } from './interfaces/merkleTree';
 
 
@@ -7,19 +7,19 @@ export const FIELD_MODULUS = BigInt(
   '0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001',
 );
 
-export function toMerklePatientRow(p: Patient): PatientRow | null {
-  if (!p.hospital?.hospitalId) {
+export function toMerklePatientRow(p: Citizen): PatientRow | null {
+  if (!p.country?.countryId) {
     console.warn('Skipping patient with missing hospital/hospitalId', p);
     return null;
   }
-  if (!p.treatment || !p.patientId) {
+  if (!p.relationship || !p.citizenId) {
     console.warn('Skipping patient missing treatment or patientId', p);
     return null;
   }
   return {
-    hospital_id: String(p.hospital.hospitalId),
-    treatment: String(p.treatment),
-    patient_id: String(p.patientId),
+    country_id: String(p.country.countryId),
+    relation: String(p.relationship),
+    citizen_id: String(p.citizenId),
   };
 }
 

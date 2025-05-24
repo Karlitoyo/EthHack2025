@@ -1,13 +1,13 @@
 import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
-import { Hospital } from '../hospitals/hospital.entity';
+import { Country } from '../country/country.entity';
 
 @Entity()
-export class Patient {
+export class Citizen {
   @PrimaryGeneratedColumn()
   id: string;
 
   @Column({ nullable: true })
-  patientId: string;
+  citizenId: string;
 
   @Column()
   firstName: string;
@@ -25,7 +25,7 @@ export class Patient {
   dateOfBirth?: string;
 
   @Column({ nullable: true })
-  treatment?: string;
+  relationship?: string;
 
   @Column({ nullable: true })
   email?: string;
@@ -36,6 +36,6 @@ export class Patient {
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 
-  @ManyToOne(() => Hospital, hospital => hospital.patients)
-  hospital: Hospital;
+  @ManyToOne(() => Country, country => country.citizen)
+  country: Country;
 }

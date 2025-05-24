@@ -1,9 +1,9 @@
 import Layout from "../components/Layout";
-import TreatmentSearch from "../components/returnData/ReturnData";
+import FamilySearch from "../components/returnData/ReturnData"; // Updated import
 
 const IndexPage = () => (
   <Layout title="Home | Next.js + TypeScript Example">
-    <TreatmentSearch />
+    <FamilySearch />
   </Layout>
 );
 

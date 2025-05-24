@@ -1,9 +1,9 @@
 import { IsNotEmpty, IsString } from 'class-validator';
 
-export class PatientDataDto {
+export class CitizenDataDto {
   @IsNotEmpty()
   @IsString()
-  patientId: string;
+  citizenId: string;
 
   @IsNotEmpty()
   @IsString()
@@ -27,7 +27,7 @@ export class PatientDataDto {
 
   @IsNotEmpty()
   @IsString()
-  treatment: string;
+  relationship: string;
 
   @IsNotEmpty()
   @IsString()
@@ -36,4 +36,8 @@ export class PatientDataDto {
   @IsNotEmpty()
   @IsString()
   contactNumber: string;
+
+  @IsNotEmpty()
+  @IsString()
+  parentCountryId: string;
 }

@@ -1,10 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+interface Country {
+    countryId: string;
+    relationship: string;
+    // Add other country properties if needed
+}
 
 const PatientComponent = () => {
     const [proof, setProof] = useState(null);
     const [isValid, setIsValid] = useState<boolean | null>(null);
     const [modalMessage, setModalMessage] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [countries, setCountries] = useState<Country[]>([]);
 
     const [formData, setFormData] = useState({
         patientId: '',
@@ -16,8 +23,35 @@ const PatientComponent = () => {
         treatment: '',
         email: '',
         contactNumber: '',
+        parentCountryId: '',
     });
     console.log('Form data:', formData);
+
+    useEffect(() => {
+        console.log('Backend URL:', process.env.NEXT_PUBLIC_BACKEND_URL); // Log the backend URL
+        const fetchCountries = async () => {
+            try {
+                const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/countries`);
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Fetched countries data:', data); // Log the raw data
+                    setCountries(data);
+                } else {
+                    console.error('Failed to fetch countries, status:', response.status);
+                    const errorText = await response.text();
+                    console.error('Error response text:', errorText);
+                }
+            } catch (error) {
+                console.error('Error fetching countries:', error);
+            }
+        };
+
+        fetchCountries();
+    }, []);
+
+    useEffect(() => {
+        console.log('Countries state updated:', countries); // Log countries state when it changes
+    }, [countries]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -25,13 +59,28 @@ const PatientComponent = () => {
 
     const generatePatient = async () => {
         setIsModalOpen(false); // Close previous modal if open
+
+        // Transform formData to match backend DTO
+        const payload = {
+            citizenId: formData.patientId, // Map patientId to citizenId
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            age: formData.age,
+            address: formData.address,
+            dateOfBirth: formData.dateOfBirth,
+            relationship: formData.treatment, // Map treatment to relationship
+            email: formData.email,
+            contactNumber: formData.contactNumber,
+            parentCountryId: formData.parentCountryId,
+        };
+
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/patients/create`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/citizens/create`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(formData),
+                body: JSON.stringify(payload), // Send the transformed payload
             });
             let result: { message?: string };
             try {
@@ -58,9 +107,9 @@ const PatientComponent = () => {
             console.error('Patient creation fetch/network error:', error); // Log catch error more specifically
             setIsValid(false);
             let displayMessage = 'An error occurred connecting to the server.';
-             if (error instanceof Error) {
-                 console.error("Caught error details:", error.message);
-             }
+            if (error instanceof Error) {
+                console.error("Caught error details:", error.message);
+            }
             setModalMessage(displayMessage);
             setIsModalOpen(true); // Open modal on catch
         }
@@ -76,8 +125,8 @@ const PatientComponent = () => {
         <div className="flex flex-col items-center justify-center min-h-screen bg-base-200 p-4">
             <div className="card w-full max-w-lg bg-base-100 shadow-xl">
                 <div className="card-body">
-                    <h1 className="card-title text-2xl font-bold">ZK-SNARK Medical Records</h1>
-                    <p className="mb-4">Generate Patient Record.</p>
+                    <h1 className="card-title text-2xl font-bold">ZK-SNARK Family Records</h1>
+                    <p className="mb-4">Generate Your Record.</p>
 
                     <form className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -124,40 +173,40 @@ const PatientComponent = () => {
                                 <label className="label">
                                     <span className="label-text font-medium">Age</span>
                                 </label>
-                                <input type="number" 
-                                className="input input-bordered w-full" 
-                                name="age"
-                                value={formData.age}
-                                onChange={handleChange}
-                                required
-                                autoComplete="off"
-                                placeholder="Enter age" />
+                                <input type="number"
+                                    className="input input-bordered w-full"
+                                    name="age"
+                                    value={formData.age}
+                                    onChange={handleChange}
+                                    required
+                                    autoComplete="off"
+                                    placeholder="Enter age" />
                             </div>
                             <div className="form-control">
                                 <label className="label">
                                     <span className="label-text font-medium">Contact Number</span>
                                 </label>
-                                <input type="number" 
-                                className="input input-bordered w-full" 
-                                name="contactNumber"
-                                value={formData.contactNumber}
-                                onChange={handleChange}
-                                required
-                                autoComplete="off"
-                                placeholder="Enter phone number" />
+                                <input type="number"
+                                    className="input input-bordered w-full"
+                                    name="contactNumber"
+                                    value={formData.contactNumber}
+                                    onChange={handleChange}
+                                    required
+                                    autoComplete="off"
+                                    placeholder="Enter phone number" />
                             </div>
                             <div className="form-control">
                                 <label className="label">
                                     <span className="label-text font-medium">E-mail</span>
                                 </label>
-                                <input type="text" 
-                                className="input input-bordered w-full" 
-                                name="email"
-                                value={formData.email}
-                                onChange={handleChange}
-                                required
-                                autoComplete="off"
-                                placeholder="E-mail" />
+                                <input type="text"
+                                    className="input input-bordered w-full"
+                                    name="email"
+                                    value={formData.email}
+                                    onChange={handleChange}
+                                    required
+                                    autoComplete="off"
+                                    placeholder="E-mail" />
                             </div>
                         </div>
 
@@ -165,14 +214,14 @@ const PatientComponent = () => {
                             <label className="label">
                                 <span className="label-text font-medium">Address</span>
                             </label>
-                            <textarea 
-                            className="textarea textarea-bordered w-full" 
-                            name="address"
-                            value={formData.address}
-                            onChange={handleChange}
-                            required
-                            autoComplete="off"
-                            placeholder="Enter address"></textarea>
+                            <textarea
+                                className="textarea textarea-bordered w-full"
+                                name="address"
+                                value={formData.address}
+                                onChange={handleChange}
+                                required
+                                autoComplete="off"
+                                placeholder="Enter address"></textarea>
                         </div>
 
                         <div className="form-control">
@@ -185,24 +234,42 @@ const PatientComponent = () => {
                                 onChange={handleChange}
                                 required
                                 autoComplete="off"
-                            className="input input-bordered w-full" />
+                                className="input input-bordered w-full" />
                         </div>
 
                         <div className="form-control">
                             <label className="label">
-                                <span className="label-text font-medium">Treatment</span>
+                                <span className="label-text font-medium">Your information</span>
                             </label>
                             <select className="select select-bordered w-full"
                                 name="treatment"
                                 value={formData.treatment}
                                 onChange={handleChange}
                                 required>
-                                <option disabled value="">Select Treatment</option>
-                                <option>Injury</option>
-                                <option>Check up</option>
-                                <option>Burn</option>
-                                <option>Fracture</option>
-                                <option>Dietary</option>
+                                <option disabled value="">Select Relationship</option>
+                                <option>Son</option>
+                                <option>Grand Son</option>
+                                <option>Great Grand Son</option>
+                            </select>
+                        </div>
+
+                        <div className="form-control">
+                            <label className="label">
+                                <span className="label-text font-medium">Parent Family Unit</span>
+                            </label>
+                            <select
+                                className="select select-bordered w-full"
+                                name="parentCountryId"
+                                value={formData.parentCountryId}
+                                onChange={handleChange}
+                                required
+                            >
+                                <option value="" disabled>Select Parent Family Unit</option>
+                                {countries.map((country) => (
+                                    <option key={country.countryId} value={country.countryId}>
+                                        {country.countryId} - {country.relationship}
+                                    </option>
+                                ))}
                             </select>
                         </div>
                     </form>

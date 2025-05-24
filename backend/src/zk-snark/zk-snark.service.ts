@@ -1,20 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { Patient } from '../patients/patient.entity';
-import { Hospital } from '../hospitals/hospital.entity';
+import { Citizen } from '../citizen/citizen.entity';
+import { Country } from '../country/country.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
-import { MerkleService } from 'src/merkle/merkle.service';
-import { assertIs32ByteHex } from 'src/merkle/utils';
 
 @Injectable()
 export class ZkSnarkService {
 
   constructor(
-    @InjectRepository(Patient)
-    private readonly patientRepository: Repository<Patient>,
-    @InjectRepository(Hospital)
-    private readonly hospitalRepository: Repository<Hospital>,
-    private readonly merkleService: MerkleService,
+    @InjectRepository(Citizen)
+    private readonly citizenRepository: Repository<Citizen>,
+    @InjectRepository(Country)
+    private readonly countryRepository: Repository<Country>,
   ) {}
 
   async generateProof(payload: {

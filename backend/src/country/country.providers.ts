@@ -1,10 +1,10 @@
 import { DataSource } from 'typeorm';
-import { Hospital } from './hospital.entity';
+import { Country } from './country.entity';
 
 export const hospitalProvider = [
   {
     provide: 'USERS_REPOSITORY',
-    useFactory: (connection: DataSource) => connection.getRepository(Hospital),
+    useFactory: (connection: DataSource) => connection.getRepository(Country),
     inject: ['DATABASE_CONNECTION'],
   },
 ];
