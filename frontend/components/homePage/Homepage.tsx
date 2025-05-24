@@ -1,4 +1,20 @@
 import { useState } from 'react';
+import { Button } from '../ui/button';
+import { PageLoader } from '../ui/page-loader';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Span } from '../ui/span';
+import { FieldSet } from '../ui/field-set';
+import { Lengend } from '../ui/legend';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
+import { Card } from '../ui/card';
+import { CardHeader } from '../ui/card-header';
+import { CardTitle } from '../ui/card-title';
+import { CardDescription } from '../ui/card-description';
+import { CardContent } from '../ui/card-content';
+import { CardFooter } from '../ui/card-footer';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu';
+import { Divider } from '../ui/divider';
 
 const ZKComponent = () => {
     const [proof, setProof] = useState(null);
@@ -42,16 +58,26 @@ const ZKComponent = () => {
 
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-base-200 p-4">
+            <DropdownMenu>
+                <DropdownMenuTrigger className='btn btn-primary mb-2'>Open</DropdownMenuTrigger>
+                <DropdownMenuContent>
+                    <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                    <Divider className='w-full'/>
+                    <DropdownMenuItem>Profile</DropdownMenuItem>
+                    <DropdownMenuItem>Billing</DropdownMenuItem>
+                    <DropdownMenuItem>Team</DropdownMenuItem>
+                    <DropdownMenuItem>Subscription</DropdownMenuItem>
+                </DropdownMenuContent>
+                </DropdownMenu>
+
             <div className="card w-full max-w-lg bg-base-100 shadow-xl">
             <div className="card-body">
                 <h1 className="card-title text-2xl font-bold">ZK-SNARK Example</h1>
                 <p className="mb-4">Generate and verify a zero-knowledge proof.</p>
-                
                 <div className="flex gap-2 mb-4">
-                <button className="btn btn-primary" onClick={generateProof}>Generate Proof</button>
-                <button className="btn btn-accent" onClick={verifyProof}>Verify Proof</button>
+                    <Button onClick={generateProof}>Generate Proof</Button>
+                    <Button variant='accent' onClick={verifyProof}>Verify Proof</Button>
                 </div>
-                
                 {proof && (
                 <div className="collapse collapse-arrow bg-base-200 mb-4">
                     <input type="checkbox" /> 
