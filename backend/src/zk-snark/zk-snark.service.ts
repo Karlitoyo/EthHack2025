@@ -1,28 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import { Citizen } from '../citizen/citizen.entity';
-import { Country } from '../country/country.entity';
-import { Repository } from 'typeorm';
-import { InjectRepository } from '@nestjs/typeorm';
 
 @Injectable()
 export class ZkSnarkService {
 
-  constructor(
-    @InjectRepository(Citizen)
-    private readonly citizenRepository: Repository<Citizen>,
-    @InjectRepository(Country)
-    private readonly countryRepository: Repository<Country>,
-  ) {}
-
   async generateProof(payload: {
-    hospital_id: string;
-    treatment: string;
-    patient_id: string;
+    // Field names match the Rust ZKP service's ProofRequest struct
+    hospital_id: string;      // Semantically: ancestor_id
+    treatment: string;        // Semantically: relationship_type
+    patient_id: string;       // Semantically: descendant_id
+    merkle_leaf_index: number; // Corresponds to u64 in Rust
+    merkle_path: string[];      // Array of hex strings
+    merkle_root: string;        // Hex string
   }) {
     const res = await fetch(`${process.env.ZKP_SERVICE_URL}/generate-proof`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload), // Send the complete payload
     });
     if (!res.ok) throw new Error(`ZKP proof generation error: ${res.status}`);
     return res.json();

@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { CountryModule } from './country/country.module';
-import { CitizenModule } from './citizen/citizen.module';
+import { CountryModule } from './family/family.module';
+import { CitizenModule } from './relation/relation.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Country } from './country/country.entity';
-import { Citizen } from './citizen/citizen.entity';
+import { Family } from './family/family.entity';
+import { Relation } from './relation/relation.entity';
 import { ConfigModule } from '@nestjs/config';
-import { CountryController } from './country/country.controller';
-import { CitizenController } from './citizen/citizen.controller';
+import { FamilyController } from './family/family.controller';
+import { RelationController } from './relation/relation.controller';
 import { ZkSnarkModule } from './zk-snark/zk-snark.module';
 import { ZkSnarkController } from './zk-snark/zk-snark.controller';
 import { MerkleController } from './merkle/merkle.controller';
@@ -27,7 +27,7 @@ import { EthereumModule } from './ethereum/ethereum.module';
       username: process.env.POSTGRES_USER,
       password: process.env.POSTGRES_PASSWORD,
       database: process.env.POSTGRES_DB,
-      entities: [Country, Citizen],
+      entities: [Family, Relation],
       synchronize: true,
     }),
     CountryModule,
@@ -39,8 +39,8 @@ import { EthereumModule } from './ethereum/ethereum.module';
   ],
   controllers: [
     AppController,
-    CountryController,
-    CitizenController,
+    FamilyController,
+    RelationController,
     ZkSnarkController,
     MerkleController,
     ZkProofLogController,

@@ -34,26 +34,59 @@ export default function FamilySearch() { // Renamed component for clarity
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // In your FamilySearch component, make sure you have:
+    const errorModalRef = React.useRef<HTMLDialogElement>(null); // Declare the ref
+    // And the <dialog> JSX in your return statement.
+
     const fetchFamilyData = async () => {
+        // Client-side validation: This error is intended for inline display, not the modal.
         if (!citizenId.trim()) {
             setError('Please enter a Citizen ID.');
+            setData(null); // Clear previous data if any
             return;
         }
+
         setLoading(true);
-        setError(null);
+        setError(null); // Clear any previous error (validation or backend)
         setData(null);
+
         try {
-            // Updated endpoint to match the backend controller
             const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/citizens/lineage/${citizenId}`);
+
             if (!res.ok) {
-                const errorData = await res.json();
-                throw new Error(errorData.message || `Error: ${res.status}`);
+                let errorPayloadMessage = `Error: ${res.status} ${res.statusText || 'Server Error'}`;
+                try {
+                    // Attempt to parse error response as JSON
+                    const errorData = await res.json();
+                    if (errorData && errorData.message) {
+                        errorPayloadMessage = errorData.message;
+                    }
+                } catch (jsonError) {
+                    // If JSON parsing fails, use the HTTP status based message
+                    console.warn('Could not parse error response as JSON.', jsonError);
+                }
+                throw new Error(errorPayloadMessage); // This will be caught by the catch block below
             }
+
+            // Attempt to parse successful response as JSON
             const json: LineageData = await res.json();
             setData(json);
-        } catch (err: any) {
+
+        } catch (err: any) { // Catches errors from fetch() itself, !res.ok throw, or res.json() failures
             console.error('Error fetching data:', err);
-            setError(err.message || 'Failed to fetch family data.');
+            
+            // Determine the error message
+            const errorMessage = (err instanceof Error && err.message) 
+                               ? err.message 
+                               : 'Failed to fetch family data. An unexpected error occurred.';
+            setError(errorMessage); // Set the error state for the modal (and potentially inline display)
+
+            if (errorModalRef.current) {
+                errorModalRef.current.showModal();
+            } else {
+                // Fallback or warning if modal ref is not properly set up
+                console.warn("Error modal ref is not available. Ensure 'errorModalRef' is defined and passed to a <dialog> element.");
+            }
         } finally {
             setLoading(false);
         }
@@ -61,6 +94,20 @@ export default function FamilySearch() { // Renamed component for clarity
 
     return (
         <div className="container mx-auto p-4 sm:p-6 md:p-8">
+            {/* Error Modal Dialog */}
+            <dialog id="error_modal" className="modal" ref={errorModalRef}>
+                <div className="modal-box">
+                    <h3 className="font-bold text-lg text-error">Error!</h3>
+                    <p className="py-4">{error}</p>
+                    <div className="modal-action">
+                        <form method="dialog">
+                            {/* if there is a button in form, it will close the modal */}
+                            <button className="btn">Close</button>
+                        </form>
+                    </div>
+                </div>
+            </dialog>
+
             {/* Increased max-width from max-w-4xl to max-w-7xl */}
             <div className="card w-full max-w-7xl bg-base-100 shadow-xl mx-auto">
             <div className="card-body p-6 sm:p-8">

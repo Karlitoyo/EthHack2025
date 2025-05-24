@@ -1,22 +1,41 @@
 import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
 import { ZkSnarkService } from './zk-snark.service';
-import { CitizenService } from '../citizen/citizen';
-import { GenerateTreatmentProofDto, VerifyProofDto } from './dto/generateTreatementProofDto';
+// Updated DTO import to use GenerateSimpleProofDto
+import { GenerateSimpleProofDto, VerifyProofDto } from './dto/generateTreatementProofDto';
+import { RelationService } from '../relation/relation'; // Import CitizenService (corrected path)
 
 @Controller('zk-snark')
 export class ZkSnarkController {
   constructor(
     private readonly zkSnarkService: ZkSnarkService,
-    private readonly citizenService: CitizenService
+    private readonly citizenService: RelationService, // Inject CitizenService
   ) {}
 
   @Post('generate-proof')
-  async generateProof(@Body() dto: GenerateTreatmentProofDto) {
-    if (!dto.patientId || !dto.treatment) {
-      throw new BadRequestException('patientId, treatment, and hospitalId are required');
+  // DTO type updated to GenerateSimpleProofDto
+  async generateProof(@Body() dto: GenerateSimpleProofDto) {
+    // Validate the simplified DTO
+    if (!dto.descendantId || !dto.relationshipType || !dto.ancestorId) {
+      throw new BadRequestException(
+        'Missing required fields: descendantId, relationshipType, and ancestorId are required.',
+      );
     }
-    // Call the service as before
-    return await this.citizenService.generateTreatmentProof(dto.patientId, dto.treatment);
+
+    // 1. Call CitizenService to get all necessary inputs for ZKP
+    const proofInputs = await this.citizenService.prepareLineageProofInputs(
+      dto.descendantId, 
+      dto.relationshipType,
+    );
+    
+    // Validate that the user-provided ancestorId matches the one derived from the descendant and relationshipType
+    if (dto.ancestorId !== proofInputs.hospital_id) {
+        throw new BadRequestException(
+            `The provided ancestorId ('${dto.ancestorId}') does not match the actual ancestorId ('${proofInputs.hospital_id}') derived for the descendant ('${dto.descendantId}') with relationship ('${dto.relationshipType}'). Please verify the input data.`
+        );
+    }
+
+    // 2. Call the ZkSnarkService with the data prepared by CitizenService
+    return await this.zkSnarkService.generateProof(proofInputs);
   }
 
   @Post('verify-proof')

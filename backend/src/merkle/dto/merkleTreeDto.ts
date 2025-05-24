@@ -1,6 +1,5 @@
-
 export class PatientRowDto {
-    hospital_id: string;
-    treatment: string;
-    patient_id: string;
+    country_id: string;
+    relation: string;
+    citizen_id: string;
   };

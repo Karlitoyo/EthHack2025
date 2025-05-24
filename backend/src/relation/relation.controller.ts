@@ -1,15 +1,15 @@
 import { Body, Controller, Post, Get, Param, BadRequestException, NotFoundException } from '@nestjs/common'; // Added BadRequestException, NotFoundException
-import { CitizenDataDto } from './dto/citizenDataDtos';
-import { CitizenService } from './citizen';
+import { CitizenDataDto } from './dto/relationDataDtos';
+import { RelationService } from './relation';
 
-@Controller('citizens')
-export class CitizenController {
-  constructor(private readonly citizenService: CitizenService) {}
+@Controller('relation')
+export class RelationController {
+  constructor(private readonly relationService: RelationService) {}
     @Post('create')
     async createPatient(@Body() citizenServiceDto: CitizenDataDto) {
       try {
         // The service method now handles the check internally before creation.
-        const citizen = await this.citizenService.createPatient(citizenServiceDto);
+        const citizen = await this.relationService.createRelation(citizenServiceDto);
         console.log('Successfully created patient for treatment:', citizenServiceDto.relationship);
         return citizen;
       } catch (error) {
@@ -27,6 +27,6 @@ export class CitizenController {
     @Param('citizenId') citizenId: string, // Changed parameter name
   ) {
     // The service method is already updated to findCitizenInCountrysByRelationship
-    return this.citizenService.findCitizenInCountrysByRelationship(citizenId);
+    return this.relationService.findRelationWithLineage(citizenId);
   }
 }

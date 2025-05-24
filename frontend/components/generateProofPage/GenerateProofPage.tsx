@@ -8,8 +8,10 @@ interface ModalContent {
 }
 
 export default function GenerateProof() {
-  const [patientId, setPatientId] = useState('');
-  const [treatment, setTreatment] = useState('');
+  const [ancestorId, setAncestorId] = useState(''); 
+  const [relationshipType, setRelationshipType] = useState(''); 
+  const [descendantId, setDescendantId] = useState(''); 
+
   const [proof, setProof] = useState<any>(null);
   const [error, setError] = useState('');
 
@@ -30,11 +32,23 @@ export default function GenerateProof() {
     setIsGeneratingProof(true); // Start loading
 
     try {
+      // Simplified payload, backend now handles Merkle component derivation
+      const payload = {
+        ancestorId: ancestorId,      // Maps to ancestorId in backend DTO
+        relationshipType: relationshipType, // Maps to relationshipType in backend DTO
+        descendantId: descendantId,      // Maps to descendantId in backend DTO
+      };
+
+      // Basic validation for the required fields
+      if (!payload.ancestorId || !payload.relationshipType || !payload.descendantId) {
+        throw new Error('Ancestor ID, Relationship Type, and Descendant ID are required.');
+      }
+
       // 1. Generate proof
       const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/zk-snark/generate-proof`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ patientId, treatment })
+        body: JSON.stringify(payload) // Send the simplified payload
       });
       if (!res.ok) throw new Error(await res.text());
       const proofJson = await res.json();
@@ -102,33 +116,50 @@ export default function GenerateProof() {
   return (
     <div className="p-6 max-w-2xl mx-auto">
       <Toaster position="top-center" reverseOrder={false} />
-      <h2 className="text-2xl font-bold mb-6">Generate ZK Proof</h2>
+      <h2 className="text-2xl font-bold mb-6">Generate ZK Proof for Lineage Link</h2>
       <form onSubmit={submitHandler} className="space-y-4">
         <div className="form-control">
           <label className="label">
-            <span className="label-text">Patient ID</span>
+            <span className="label-text">Ancestor ID (e.g., Grandfather's ID)</span>
           </label>
           <input
             type="text"
-            value={patientId}
-            onChange={e => setPatientId(e.target.value)}
+            value={ancestorId}
+            onChange={e => setAncestorId(e.target.value)}
             className="input input-bordered w-full"
             required
             disabled={isGeneratingProof || isSubmittingProof}
+            placeholder="Enter ancestor ID"
           />
         </div>
 
         <div className="form-control">
           <label className="label">
-            <span className="label-text">Treatment</span>
+            <span className="label-text">Relationship Type (e.g., child_of, parent_of)</span>
           </label>
           <input
             type="text"
-            value={treatment}
-            onChange={e => setTreatment(e.target.value)}
+            value={relationshipType}
+            onChange={e => setRelationshipType(e.target.value)}
             className="input input-bordered w-full"
             required
             disabled={isGeneratingProof || isSubmittingProof}
+            placeholder="Enter relationship type"
+          />
+        </div>
+
+        <div className="form-control">
+          <label className="label">
+            <span className="label-text">Descendant ID (e.g., Son's ID)</span>
+          </label>
+          <input
+            type="text"
+            value={descendantId}
+            onChange={e => setDescendantId(e.target.value)}
+            className="input input-bordered w-full"
+            required
+            disabled={isGeneratingProof || isSubmittingProof}
+            placeholder="Enter descendant ID"
           />
         </div>
 

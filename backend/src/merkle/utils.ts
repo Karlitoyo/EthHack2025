@@ -1,5 +1,5 @@
 // src/merkle/utils.ts
-import { Citizen } from '../citizen/citizen.entity';
+import { Relation } from '../relation/relation.entity';
 import { PatientRow } from './interfaces/merkleTree';
 
 
@@ -7,21 +7,21 @@ export const FIELD_MODULUS = BigInt(
   '0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001',
 );
 
-export function toMerklePatientRow(p: Citizen): PatientRow | null {
-  if (!p.country?.countryId) {
-    console.warn('Skipping patient with missing hospital/hospitalId', p);
-    return null;
-  }
-  if (!p.relationship || !p.citizenId) {
-    console.warn('Skipping patient missing treatment or patientId', p);
-    return null;
-  }
-  return {
-    country_id: String(p.country.countryId),
-    relation: String(p.relationship),
-    citizen_id: String(p.citizenId),
-  };
-}
+// export function toMerklePatientRow(p: Relation): PatientRow | null {
+//   if (!p.country?.countryId) {
+//     console.warn('Skipping patient with missing hospital/hospitalId', p);
+//     return null;
+//   }
+//   if (!p.relationship || !p.citizenId) {
+//     console.warn('Skipping patient missing treatment or patientId', p);
+//     return null;
+//   }
+//   return {
+//     country_id: String(p.country.countryId),
+//     relation: String(p.relationship),
+//     citizen_id: String(p.citizenId),
+//   };
+// }
 
 export function assertIs32ByteHex(label: string, value: string) {
   if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value)) {

@@ -1,8 +1,8 @@
 import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
-import { Country } from '../country/country.entity';
+import { Family } from '../family/family.entity';
 
 @Entity()
-export class Citizen {
+export class Relation {
   @PrimaryGeneratedColumn()
   id: string;
 
@@ -36,6 +36,6 @@ export class Citizen {
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 
-  @ManyToOne(() => Country, country => country.citizen)
-  country: Country;
+  @ManyToOne(() => Family, family => family.relation)
+  family: Family;
 }

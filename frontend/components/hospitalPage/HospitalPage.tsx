@@ -138,7 +138,7 @@ const HospitalComponent = () => {
                                     required
                                     autoComplete="off"
                                     className="input input-bordered w-full"
-                                    placeholder="Enter hospital name" />
+                                    placeholder="Enter Relation name" />
                             </div>
                             <div className="form-control">
                                 <label className="label">
@@ -155,7 +155,7 @@ const HospitalComponent = () => {
                             </div>
                             <div className="form-control">
                                 <label className="label">
-                                    <span className="label-text font-medium">Capacity</span>
+                                    <span className="label-text font-medium">Status</span>
                                 </label>
                                 <input type="text" 
                                     className="input input-bordered w-full" 
@@ -164,7 +164,7 @@ const HospitalComponent = () => {
                                     onChange={handleChange}
                                     required
                                     autoComplete="off"
-                                    placeholder="Enter capacity of unit" />
+                                    placeholder="Alive or Dead" />
                             </div>
                             <div className="form-control">
                                 <label className="label">
@@ -181,7 +181,7 @@ const HospitalComponent = () => {
                             </div>
                             <div className="form-control">
                                 <label className="label">
-                                    <span className="label-text font-medium">Admin Name</span>
+                                    <span className="label-text font-medium">E-mail</span>
                                 </label>
                                 <input type="text" 
                                     className="input input-bordered w-full" 
@@ -190,7 +190,7 @@ const HospitalComponent = () => {
                                     onChange={handleChange}
                                     required
                                     autoComplete="off"
-                                    placeholder="Enter admin name" />
+                                    placeholder="Enter e-mail address" />
                             </div>
                         </div>
                         <select className="select select-bordered w-full"
