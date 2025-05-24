@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import toast, { Toaster } from 'react-hot-toast';
+import { Toaster } from 'react-hot-toast';
 
 // Define the type for the modal content
 interface ModalContent {
@@ -8,9 +8,7 @@ interface ModalContent {
 }
 
 export default function GenerateProof() {
-  const [ancestorId, setAncestorId] = useState(''); 
-  const [relationshipType, setRelationshipType] = useState(''); 
-  const [descendantId, setDescendantId] = useState(''); 
+  const [identifier, setIdentifier] = useState(''); // Changed from ancestorId, relationshipType, descendantId
 
   const [proof, setProof] = useState<any>(null);
   const [error, setError] = useState('');
@@ -32,23 +30,21 @@ export default function GenerateProof() {
     setIsGeneratingProof(true); // Start loading
 
     try {
-      // Simplified payload, backend now handles Merkle component derivation
+      // Payload now uses a single identifier
       const payload = {
-        ancestorId: ancestorId,      // Maps to ancestorId in backend DTO
-        relationshipType: relationshipType, // Maps to relationshipType in backend DTO
-        descendantId: descendantId,      // Maps to descendantId in backend DTO
+        identifier: identifier,
       };
 
-      // Basic validation for the required fields
-      if (!payload.ancestorId || !payload.relationshipType || !payload.descendantId) {
-        throw new Error('Ancestor ID, Relationship Type, and Descendant ID are required.');
+      // Basic validation for the required field
+      if (!payload.identifier) {
+        throw new Error('Identifier is required.');
       }
 
-      // 1. Generate proof
+      // 1. Generate proof by calling the new lineage proof endpoint
       const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/zk-snark/generate-proof`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload) // Send the simplified payload
+        body: JSON.stringify(payload) // Send the identifier
       });
       if (!res.ok) throw new Error(await res.text());
       const proofJson = await res.json();
@@ -118,102 +114,43 @@ export default function GenerateProof() {
       <Toaster position="top-center" reverseOrder={false} />
       <h2 className="text-2xl font-bold mb-6">Generate ZK Proof for Lineage Link</h2>
       <form onSubmit={submitHandler} className="space-y-4">
-        <div className="form-control">
-          <label className="label">
-            <span className="label-text">Ancestor ID (e.g., Grandfather's ID)</span>
+        <div>
+          <label htmlFor="identifier" className="block text-sm font-medium text-gray-700">
+            Identifier (Citizen ID or Family ID)
           </label>
           <input
             type="text"
-            value={ancestorId}
-            onChange={e => setAncestorId(e.target.value)}
-            className="input input-bordered w-full"
-            required
-            disabled={isGeneratingProof || isSubmittingProof}
-            placeholder="Enter ancestor ID"
+            name="identifier"
+            id="identifier"
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            placeholder="Enter Citizen ID or Family ID"
           />
         </div>
-
-        <div className="form-control">
-          <label className="label">
-            <span className="label-text">Relationship Type (e.g., child_of, parent_of)</span>
-          </label>
-          <input
-            type="text"
-            value={relationshipType}
-            onChange={e => setRelationshipType(e.target.value)}
-            className="input input-bordered w-full"
-            required
-            disabled={isGeneratingProof || isSubmittingProof}
-            placeholder="Enter relationship type"
-          />
-        </div>
-
-        <div className="form-control">
-          <label className="label">
-            <span className="label-text">Descendant ID (e.g., Son's ID)</span>
-          </label>
-          <input
-            type="text"
-            value={descendantId}
-            onChange={e => setDescendantId(e.target.value)}
-            className="input input-bordered w-full"
-            required
-            disabled={isGeneratingProof || isSubmittingProof}
-            placeholder="Enter descendant ID"
-          />
-        </div>
-
+        
         <button
           type="submit"
-          className={`btn btn-primary mt-4 ${isGeneratingProof ? 'loading' : ''}`}
           disabled={isGeneratingProof || isSubmittingProof}
+          className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
         >
-          {isGeneratingProof ? 'Generating...' : 'Generate Proof'}
+          {isGeneratingProof ? 'Generating Proof...' : 'Generate Proof'}
         </button>
-
-        {error && !isModalOpen && <div className="alert alert-error mt-4">{error}</div>}
-
-        {proof && (
-          <div className="mt-6">
-            <h3 className="text-xl font-semibold mb-2">Proof Generated:</h3>
-            <textarea
-              readOnly
-              value={JSON.stringify(proof, null, 2)}
-              rows={8}
-              className="textarea textarea-bordered w-full font-mono text-sm max-h-64 overflow-y-auto"
-              id="proof-textarea"
-            />
-            <div className="flex space-x-2 mt-4">
-              <button
-                type="button"
-                className={`btn btn-secondary ${isSubmittingProof ? 'loading' : ''}`}
-                onClick={handleSubmitProof}
-                disabled={!proof || isSubmittingProof || isGeneratingProof}
-              >
-                {isSubmittingProof ? 'Submitting...' : 'Submit Proof On-Chain'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={() => {
-                  navigator.clipboard.writeText(JSON.stringify(proof, null, 2))
-                    .then(() => {
-                        toast.success('Proof copied successfully!');
-                      console.log('Proof copied to clipboard!');
-                    })
-                    .catch(err => {
-                      console.error('Failed to copy proof: ', err);
-                      toast.error('Failed to copy Proof!');
-                    });
-                }}
-                disabled={!proof || isGeneratingProof || isSubmittingProof}
-              >
-                Copy Proof
-              </button>
-            </div>
-          </div>
-        )}
       </form>
+
+      {proof && !error && (
+        <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-md">
+          <h3 className="text-lg font-medium text-green-800">Proof Generated Successfully!</h3>
+          <pre className="mt-2 text-sm text-green-700 overflow-x-auto">{JSON.stringify(proof, null, 2)}</pre>
+          <button
+            onClick={handleSubmitProof}
+            disabled={isSubmittingProof || !proof}
+            className="mt-4 w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+          >
+            {isSubmittingProof ? 'Submitting Proof...' : 'Submit Proof to Chain'}
+          </button>
+        </div>
+      )}
 
       {/* DaisyUI Modal */}
       {isModalOpen && modalContent && (

@@ -1,17 +1,12 @@
 import { useState, useEffect } from 'react';
-
-interface Country {
-    countryId: string;
-    relationship: string;
-    // Add other country properties if needed
-}
+import { Family } from '../../interfaces'; // Import the new Family interface
 
 const PatientComponent = () => {
     const [proof, setProof] = useState(null);
     const [isValid, setIsValid] = useState<boolean | null>(null);
     const [modalMessage, setModalMessage] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [families, setFamilies] = useState<Country[]>([]); // Renamed from countries
+    const [families, setFamilies] = useState<Family[]>([]); // Use the imported Family interface
 
     const [formData, setFormData] = useState({
         patientId: '',
@@ -33,7 +28,7 @@ const PatientComponent = () => {
             try {
                 const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/families`); // Corrected endpoint
                 if (response.ok) {
-                    const data = await response.json();
+                    const data: Family[] = await response.json(); // Type the data with Family[]
                     console.log('Fetched families data:', data); // Log the raw data, Renamed log
                     setFamilies(data); // Renamed from setCountries
                 } else {
@@ -265,9 +260,9 @@ const PatientComponent = () => {
                                 required
                             >
                                 <option value="" disabled>Select Parent Family Unit</option>
-                                {families.map((country) => (
-                                    <option key={country.countryId} value={country.countryId}>
-                                        {country.countryId} - {country.relationship}
+                                {families.map((family) => (
+                                    <option key={family.id} value={family.countryId || family.id}>
+                                        {family.name} (ID: {family.countryId || family.id})
                                     </option>
                                 ))}
                             </select>

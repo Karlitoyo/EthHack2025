@@ -7,21 +7,20 @@ export const FIELD_MODULUS = BigInt(
   '0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001',
 );
 
-// export function toMerklePatientRow(p: Relation): PatientRow | null {
-//   if (!p.country?.countryId) {
-//     console.warn('Skipping patient with missing hospital/hospitalId', p);
-//     return null;
-//   }
-//   if (!p.relationship || !p.citizenId) {
-//     console.warn('Skipping patient missing treatment or patientId', p);
-//     return null;
-//   }
-//   return {
-//     country_id: String(p.country.countryId),
-//     relation: String(p.relationship),
-//     citizen_id: String(p.citizenId),
-//   };
-// }
+export function toMerklePatientRow(relation: Relation): PatientRow {
+    // Ensure that family and its countryId are loaded and available
+    if (!relation.family || typeof relation.family.countryId === 'undefined') {
+        console.warn(`Relation with ID ${relation.id} (${relation.firstName} ${relation.lastName}) is missing family or family.countryId. Skipping for Merkle tree.`);
+        // Return a structure that can be filtered out or handled, or throw an error
+        return { country_id: null, relation: null, citizen_id: null };
+    }
+    return {
+        country_id: relation.family.countryId, // Use family.countryId
+        relation: relation.relationship,       // Use relationship
+        citizen_id: relation.citizenId,        // Use citizenId
+    };
+}
+
 
 export function assertIs32ByteHex(label: string, value: string) {
   if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value)) {

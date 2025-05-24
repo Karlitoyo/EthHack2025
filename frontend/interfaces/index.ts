@@ -31,6 +31,21 @@ export interface FamilySummary {
   roleInFamily?: string | null; // The 'relationship' field of the Family (e.g., Grandfather)
 }
 
+export interface Family { // New Family interface
+  id: string;
+  countryId: string | null;
+  name: string;
+  location: string;
+  relationship?: string | null;
+  contactNumber?: string | null;
+  adminName?: string | null;
+  capacity?: string | null;
+  createdAt: Date;
+  relation: Relation[];
+  parentFamilyId: string | null;
+  // childFamilies: Family[]; // Not including childFamilies for now, assuming the /families endpoint returns a flat list or summary
+}
+
 export interface LineageData {
   targetRelation: Relation;
   lineagePath: FamilySummary[]; // Corrected type

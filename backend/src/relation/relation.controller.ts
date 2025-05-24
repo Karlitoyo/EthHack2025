@@ -2,6 +2,34 @@ import { Body, Controller, Post, Get, Param, BadRequestException, NotFoundExcept
 import { CitizenDataDto } from './dto/relationDataDtos';
 import { RelationService } from './relation';
 
+// Define a type for the frontend Relation structure for clarity
+interface FrontendRelation {
+  id: string;
+  citizenId: string | null;
+  firstName: string;
+  lastName: string;
+  age: string;
+  email: string | null;
+  address: string | null;
+  contactNumber: string | null;
+  relationshipToFamily: string | null;
+  merkleRoot: string | null;
+}
+
+interface LineagePathItem {
+  id: string;
+  familyId: string | null;
+  name: string;
+  location: string;
+  roleInFamily: string | undefined | null;
+}
+
+interface LineageResponse {
+  targetRelation: FrontendRelation;
+  lineagePath: LineagePathItem[];
+  siblings: FrontendRelation[];
+}
+
 @Controller('relation')
 export class RelationController {
   constructor(private readonly relationService: RelationService) {}
@@ -25,7 +53,7 @@ export class RelationController {
   @Get('lineage/:citizenId') // Changed route and parameter name
   async getCitizenLineage(
     @Param('citizenId') citizenId: string, // Changed parameter name
-  ) {
+  ): Promise<LineageResponse> {
     // The service method is already updated to findCitizenInCountrysByRelationship
     return this.relationService.findRelationWithLineage(citizenId);
   }

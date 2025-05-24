@@ -1,45 +1,45 @@
-import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, BadRequestException } from '@nestjs/common'; // Removed Logger
 import { ZkSnarkService } from './zk-snark.service';
-// Updated DTO import to use GenerateSimpleProofDto
-import { GenerateSimpleProofDto, VerifyProofDto } from './dto/generateTreatementProofDto';
-import { RelationService } from '../relation/relation'; // Import CitizenService (corrected path)
+import { VerifyProofDto } from './dto/generateTreatementProofDto'; 
+import { GenerateLineageProofDto } from './dto/generateLineageProofDto';
+import { GenerateSpecificLinkProofDto } from './dto/generateSpecificLinkProofDto'; // Added import
 
 @Controller('zk-snark')
 export class ZkSnarkController {
   constructor(
     private readonly zkSnarkService: ZkSnarkService,
-    private readonly citizenService: RelationService, // Inject CitizenService
   ) {}
 
   @Post('generate-proof')
-  // DTO type updated to GenerateSimpleProofDto
-  async generateProof(@Body() dto: GenerateSimpleProofDto) {
-    // Validate the simplified DTO
-    if (!dto.descendantId || !dto.relationshipType || !dto.ancestorId) {
+  async generateProof(@Body() dto: GenerateLineageProofDto) {
+    console.log(`[ZkSnarkController] generateProof endpoint hit with DTO: ${JSON.stringify(dto)}`); // Changed to console.log
+    // Validate the identifier from GenerateLineageProofDto
+    if (!dto.identifier) {
       throw new BadRequestException(
-        'Missing required fields: descendantId, relationshipType, and ancestorId are required.',
+        'Missing required field: identifier is required.',
       );
     }
-
-    // 1. Call CitizenService to get all necessary inputs for ZKP
-    const proofInputs = await this.citizenService.prepareLineageProofInputs(
-      dto.descendantId, 
-      dto.relationshipType,
-    );
-    
-    // Validate that the user-provided ancestorId matches the one derived from the descendant and relationshipType
-    if (dto.ancestorId !== proofInputs.hospital_id) {
-        throw new BadRequestException(
-            `The provided ancestorId ('${dto.ancestorId}') does not match the actual ancestorId ('${proofInputs.hospital_id}') derived for the descendant ('${dto.descendantId}') with relationship ('${dto.relationshipType}'). Please verify the input data.`
-        );
-    }
-
-    // 2. Call the ZkSnarkService with the data prepared by CitizenService
-    return await this.zkSnarkService.generateProof(proofInputs);
+    // Call the unified lineage proof generation service method
+    return await this.zkSnarkService.generateLineageProof(dto);
   }
+
+  // // This endpoint is for generating a proof for a specific, user-provided link (ancestor, relationship, descendant)
+  // @Post('generate-specific-link-proof')
+  // async generateSpecificLinkProof(@Body() dto: GenerateSpecificLinkProofDto) {
+  //   return await this.zkSnarkService.generateSpecificLinkProof(dto);
+  // }
+
+  // @Post('generate-lineage-proof') // This endpoint remains as is, now functionally identical to /generate-proof
+  // async generateLineageProof(@Body() dto: GenerateLineageProofDto) {
+  //   if (!dto.identifier) {
+  //     throw new BadRequestException('Missing required field: identifier is required.');
+  //   }
+  //   return await this.zkSnarkService.generateLineageProof(dto);
+  // }
 
   @Post('verify-proof')
   async verifyProof(@Body() dto: VerifyProofDto) {
+    console.log(`[ZkSnarkController] verifyProof endpoint hit with DTO: ${JSON.stringify(dto)}`); // Changed to console.log
     if (!Array.isArray(dto.public_inputs) || dto.public_inputs.length !== 2) {
       throw new BadRequestException('public_inputs must be a 2-element array');
     }
