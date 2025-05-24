@@ -11,7 +11,7 @@ const PatientComponent = () => {
     const [isValid, setIsValid] = useState<boolean | null>(null);
     const [modalMessage, setModalMessage] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [countries, setCountries] = useState<Country[]>([]);
+    const [families, setFamilies] = useState<Country[]>([]); // Renamed from countries
 
     const [formData, setFormData] = useState({
         patientId: '',
@@ -29,29 +29,29 @@ const PatientComponent = () => {
 
     useEffect(() => {
         console.log('Backend URL:', process.env.NEXT_PUBLIC_BACKEND_URL); // Log the backend URL
-        const fetchCountries = async () => {
+        const fetchFamilies = async () => { // Renamed from fetchCountries
             try {
-                const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/countries`);
+                const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/families`); // Corrected endpoint
                 if (response.ok) {
                     const data = await response.json();
-                    console.log('Fetched countries data:', data); // Log the raw data
-                    setCountries(data);
+                    console.log('Fetched families data:', data); // Log the raw data, Renamed log
+                    setFamilies(data); // Renamed from setCountries
                 } else {
-                    console.error('Failed to fetch countries, status:', response.status);
+                    console.error('Failed to fetch families, status:', response.status); // Renamed log
                     const errorText = await response.text();
                     console.error('Error response text:', errorText);
                 }
             } catch (error) {
-                console.error('Error fetching countries:', error);
+                console.error('Error fetching families:', error); // Renamed log
             }
         };
 
-        fetchCountries();
+        fetchFamilies(); // Renamed from fetchCountries
     }, []);
 
     useEffect(() => {
-        console.log('Countries state updated:', countries); // Log countries state when it changes
-    }, [countries]);
+        console.log('Families state updated:', families); // Log families state when it changes, Renamed log
+    }, [families]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -75,7 +75,7 @@ const PatientComponent = () => {
         };
 
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/citizens/create`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/relation/create`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -265,7 +265,7 @@ const PatientComponent = () => {
                                 required
                             >
                                 <option value="" disabled>Select Parent Family Unit</option>
-                                {countries.map((country) => (
+                                {families.map((country) => (
                                     <option key={country.countryId} value={country.countryId}>
                                         {country.countryId} - {country.relationship}
                                     </option>

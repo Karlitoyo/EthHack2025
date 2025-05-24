@@ -27,7 +27,9 @@ const HospitalComponent = () => {
     useEffect(() => {
         const fetchCountriesForSelect = async () => {
             try {
-                const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/countries`);
+                const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/families`, {
+                    method: 'GET',
+                });
                 if (response.ok) {
                     const data: CountryForSelect[] = await response.json();
                     setAvailableParentCountries(data);
@@ -62,7 +64,7 @@ const HospitalComponent = () => {
         };
 
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/countries/create`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/families/create`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

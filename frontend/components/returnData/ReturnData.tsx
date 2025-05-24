@@ -1,45 +1,15 @@
 import React, { useState } from 'react';
+import { LineageData } from '../../interfaces'; // Import the updated interfaces
 
-// Define interfaces for the expected data structure
-interface CitizenDetail {
-    id: string;
-    citizenId: string | null;
-    firstName: string;
-    lastName: string;
-    age: string;
-    email?: string | null;
-    address?: string | null;
-    phone?: string | null;
-    relationshipToParentCountry?: string | null; // e.g., "son", "daughter"
-    isTarget?: boolean; // For the initially searched citizen
-}
-
-interface CountryDetail {
-    id: string;
-    countryId: string | null;
-    name: string;
-    location: string;
-    roleInFamily?: string | null; // e.g., "father", "grandfather"
-}
-
-interface LineageData {
-    targetCitizen: CitizenDetail;
-    lineage: CountryDetail[];
-    siblings: CitizenDetail[];
-}
-
-export default function FamilySearch() { // Renamed component for clarity
+export default function FamilySearch() {
     const [citizenId, setCitizenId] = useState('');
     const [data, setData] = useState<LineageData | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // In your FamilySearch component, make sure you have:
     const errorModalRef = React.useRef<HTMLDialogElement>(null); // Declare the ref
-    // And the <dialog> JSX in your return statement.
 
     const fetchFamilyData = async () => {
-        // Client-side validation: This error is intended for inline display, not the modal.
         if (!citizenId.trim()) {
             setError('Please enter a Citizen ID.');
             setData(null); // Clear previous data if any
@@ -51,40 +21,35 @@ export default function FamilySearch() { // Renamed component for clarity
         setData(null);
 
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/citizens/lineage/${citizenId}`);
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/relation/lineage/${citizenId}`);
 
             if (!res.ok) {
                 let errorPayloadMessage = `Error: ${res.status} ${res.statusText || 'Server Error'}`;
                 try {
-                    // Attempt to parse error response as JSON
                     const errorData = await res.json();
                     if (errorData && errorData.message) {
                         errorPayloadMessage = errorData.message;
                     }
                 } catch (jsonError) {
-                    // If JSON parsing fails, use the HTTP status based message
                     console.warn('Could not parse error response as JSON.', jsonError);
                 }
-                throw new Error(errorPayloadMessage); // This will be caught by the catch block below
+                throw new Error(errorPayloadMessage);
             }
 
-            // Attempt to parse successful response as JSON
             const json: LineageData = await res.json();
             setData(json);
 
-        } catch (err: any) { // Catches errors from fetch() itself, !res.ok throw, or res.json() failures
+        } catch (err: any) {
             console.error('Error fetching data:', err);
             
-            // Determine the error message
             const errorMessage = (err instanceof Error && err.message) 
                                ? err.message 
                                : 'Failed to fetch family data. An unexpected error occurred.';
-            setError(errorMessage); // Set the error state for the modal (and potentially inline display)
+            setError(errorMessage);
 
             if (errorModalRef.current) {
                 errorModalRef.current.showModal();
             } else {
-                // Fallback or warning if modal ref is not properly set up
                 console.warn("Error modal ref is not available. Ensure 'errorModalRef' is defined and passed to a <dialog> element.");
             }
         } finally {
@@ -101,14 +66,12 @@ export default function FamilySearch() { // Renamed component for clarity
                     <p className="py-4">{error}</p>
                     <div className="modal-action">
                         <form method="dialog">
-                            {/* if there is a button in form, it will close the modal */}
                             <button className="btn">Close</button>
                         </form>
                     </div>
                 </div>
             </dialog>
 
-            {/* Increased max-width from max-w-4xl to max-w-7xl */}
             <div className="card w-full max-w-7xl bg-base-100 shadow-xl mx-auto">
             <div className="card-body p-6 sm:p-8">
                 <h2 className="card-title text-2xl md:text-3xl mb-6 text-center sm:text-left">
@@ -145,124 +108,46 @@ export default function FamilySearch() { // Renamed component for clarity
                 )}
 
                 {data && (
-                <div className="mt-6">
-                    {/* Display Lineage (Ancestors) - Title appears first */}
-                    { (data.targetCitizen || (data.lineage && data.lineage.length > 0)) && ( // Show title if there's anything for the timeline
-                        <h3 
-                            className="text-xl sm:text-2xl font-semibold mb-6 text-neutral-content animate-fadeInUp" 
-                            style={{ animationDelay: '0.1s' }}
-                        >
-                            Ancestral Lineage
-                        </h3>
-                    )}
-
-                    {/* Combined Timeline: Target Citizen + Ancestors */}
-                    {/* Removed overflow-x-auto and custom-scrollbar */}
-                    <div className="flex flex-row items-stretch space-x-2 md:space-x-3 lg:space-x-4 p-3 md:p-4 rounded-lg bg-base-300/20 mb-8">
-                        {/* 1. Target Citizen Card */}
-                        <div
-                            className="card card-compact bg-primary text-primary-content shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out transform hover:-translate-y-1 animate-fadeInUp flex-shrink-0 w-60 sm:w-64 md:w-72"
-                            style={{ animationDelay: '0.3s' }}
-                        >
-                            <div className="card-body p-3 md:p-4">
-                                <h4 className="card-title text-md sm:text-lg">
-                                    {data.targetCitizen.firstName} {data.targetCitizen.lastName}
-                                </h4>
-                                <p className="text-xs opacity-90">(Target Individual)</p>
-                                <div className="divider my-1 before:bg-primary-content/20 after:bg-primary-content/20"></div>
-                                <p className="text-xs sm:text-sm opacity-80"><strong>ID:</strong> {data.targetCitizen.citizenId || data.targetCitizen.id}</p>
-                                <p className="text-xs sm:text-sm opacity-80"><strong>Age:</strong> {data.targetCitizen.age}</p>
-                                <p className="text-xs sm:text-sm opacity-80"><strong>Relation to Unit:</strong> {data.targetCitizen.relationshipToParentCountry || 'N/A'}</p>
-                            </div>
-                        </div>
-
-                        {/* Arrow connecting Target Citizen to First Ancestor (if lineage exists) */}
-                        {data.lineage && data.lineage.length > 0 && (
-                            <div
-                                className="flex items-center justify-center text-primary opacity-90 animate-fadeInUp px-1 md:px-2"
-                                style={{ animationDelay: '0.5s' }}
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                                </svg>
-                            </div>
-                        )}
-
-                        {/* 2. Mapped Ancestor Cards and Arrows */}
-                        {(() => {
-                            const reversedLineage = [...data.lineage].reverse();
-                            return (
-                                <>
-                                {reversedLineage.map((country, index) => {
-                                    const cardDelay = 0.7 + index * 0.4; // Starts at 0.7s, then 1.1s, 1.5s
-                                    const arrowDelay = 0.9 + index * 0.4; // Starts at 0.9s, then 1.3s, 1.7s
-                                    return (
-                                        <React.Fragment key={country.id}>
-                                            <div
-                                                className="card card-compact bg-base-200 shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out transform hover:-translate-y-1 animate-fadeInUp flex-shrink-0 w-56 sm:w-60 md:w-64 lg:w-72"
-                                                style={{ animationDelay: `${cardDelay}s` }}
-                                            >
-                                                <div className="card-body p-3 md:p-4">
-                                                    <h4 className="card-title text-base sm:text-md md:text-lg text-accent">{country.name}</h4>
-                                                    <p className="text-xs sm:text-sm opacity-80"><strong>Role:</strong> {country.roleInFamily || 'N/A'}</p>
-                                                    <p className="text-xs sm:text-sm opacity-80"><strong>Location:</strong> {country.location}</p>
-                                                    <p className="text-xs sm:text-sm opacity-80"><strong>Unit ID:</strong> {country.countryId || 'N/A'}</p>
-                                                </div>
-                                            </div>
-                                            {index < reversedLineage.length - 1 && (
-                                                <div
-                                                    className="flex items-center justify-center text-primary opacity-90 animate-fadeInUp px-1 md:px-2"
-                                                    style={{ animationDelay: `${arrowDelay}s` }}
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                                                    </svg>
-                                                </div>
-                                            )}
-                                        </React.Fragment>
-                                    );
-                                })}
-                                </>
-                            );
-                        })()}
-                    </div>
+                <div className="mt-6 bg-base-200 shadow-xl rounded-lg p-4 sm:p-6">
+                    <h2 className="text-2xl font-bold mb-4 text-center text-primary">Lineage Information</h2>
                     
-                    {/* Display Siblings */}
-                    {data.siblings && data.siblings.length > 0 && (
-                    <div className="mb-8">
-                        <h3 
-                            className="text-xl sm:text-2xl font-semibold mb-4 text-neutral-content animate-fadeInUp"
-                            style={{ animationDelay: '1.5s' }} // Delayed to appear after timeline
-                        >
-                            Siblings
-                        </h3>
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {data.siblings.map((sibling, index) => (
-                            <div 
-                                key={sibling.id} 
-                                className="card card-compact bg-base-200 shadow-md hover:shadow-lg transition-all duration-300 ease-in-out transform hover:-translate-y-1 animate-fadeInUp"
-                                style={{ animationDelay: `${1.7 + index * 0.2}s`}} // Staggered animation for sibling cards
-                            >
-                            <div className="card-body">
-                                <h5 className="card-title text-md text-secondary">
-                                {sibling.firstName} {sibling.lastName}
-                                </h5>
-                                <p><strong>ID:</strong> {sibling.citizenId || sibling.id}</p>
-                                <p><strong>Age:</strong> {sibling.age}</p>
-                                <p><strong>Relationship to Parent Country:</strong> {sibling.relationshipToParentCountry || 'N/A'}</p>
-                            </div>
-                            </div>
-                        ))}
-                        </div>
+                    {/* Target Relation Details */}
+                    <div className="mb-6 pb-4 border-b border-base-300">
+                        <h3 className="text-xl font-semibold mb-2 text-accent">Target Individual</h3>
+                        <p><span className="font-medium">Name:</span> {data.targetRelation.firstName} {data.targetRelation.lastName}</p>
+                        <p><span className="font-medium">ID:</span> {data.targetRelation.id}</p>
                     </div>
+
+                    {/* Lineage Path (Ancestors) */}
+                    {data.lineagePath && data.lineagePath.length > 0 && (
+                        <div className="mb-6 pb-4 border-b border-base-300">
+                            <h3 className="text-xl font-semibold mb-2 text-accent">Ancestral Lineage</h3>
+                            <ul className="list-disc list-inside pl-4">
+                                {data.lineagePath.map((ancestor, index) => (
+                                    <li key={ancestor.id} className="mb-1">
+                                        {ancestor.name} {ancestor.roleInFamily ? `(${ancestor.roleInFamily})` : ''} (Family ID: {ancestor.familyId || 'N/A'})
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
                     )}
 
-                    {/* Message for no additional lineage or siblings */}
-                    {!loading && data.targetCitizen && !data.lineage?.length && !data.siblings?.length && (
-                    <div role="alert" className="alert alert-info shadow-lg mt-8 animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="stroke-current shrink-0 w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        <span>No further lineage or sibling information found for this citizen beyond their direct details.</span>
-                    </div>
+                    {/* Siblings Details */}
+                    {data.siblings && data.siblings.length > 0 && (
+                        <div className="mb-6">
+                            <h3 className="text-xl font-semibold mb-2 text-accent">Siblings</h3>
+                            <ul className="list-disc list-inside pl-4">
+                                {data.siblings.map(sibling => (
+                                    <li key={sibling.id} className="mb-1">
+                                        {sibling.firstName} {sibling.lastName} (ID: {sibling.id})
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    {!data.lineagePath?.length && !data.siblings?.length && (
+                        <p className="text-center text-info">No lineage or sibling information available for this individual.</p>
                     )}
                 </div>
                 )}

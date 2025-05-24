@@ -1,23 +1,35 @@
-import { Relation } from './relation.entity';
-import { Repository } from 'typeorm';
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common'; // Import NotFoundException and ConflictException
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { CitizenDataDto } from './dto/relationDataDtos';
+import { Repository } from 'typeorm';
+import { MerkleService } from '../merkle/merkle.service';
+import { Relation } from './relation.entity';
 import { Family } from '../family/family.entity';
-import { ILike } from 'typeorm';
-import { MerkleService } from '../merkle/merkle.service'; // adjust the import!
-// import { toMerklePatientRow } from '../merkle/utils';
-import { MERKLE_PATH_LEN } from '../merkle/constants/constants';
+import { CitizenDataDto } from './dto/relationDataDtos'; // Added import for CitizenDataDto
+import { MERKLE_PATH_LEN } from '../merkle/constants/constants'; // Added import for MERKLE_PATH_LEN
+
+// Define a type for the frontend Relation structure for clarity
+interface FrontendRelation {
+  id: string;
+  citizenId: string | null;
+  firstName: string;
+  lastName: string;
+  age: string;
+  email: string | null;
+  address: string | null;
+  contactNumber: string | null;
+  relationshipToFamily: string | null;
+  merkleRoot: string | null;
+}
 
 @Injectable()
-export class RelationService { // Renamed from CitizenService
+export class RelationService {
 
   constructor(
     @InjectRepository(Relation)
-    private readonly relationRepository: Repository<Relation>, // Renamed from citizenRepository
+    private readonly relationRepository: Repository<Relation>,
     @InjectRepository(Family)
-    private readonly familyRepository: Repository<Family>, // Renamed from countryRepository
-    private readonly merkleService: MerkleService, // Renamed from merkleManager for consistency
+    private readonly familyRepository: Repository<Family>,
+    private readonly merkleService: MerkleService,
   ) {}
 
   async createRelation(createRelationDto: CitizenDataDto): Promise<Relation> { // Renamed from createPatient, DTO type kept as is
@@ -44,32 +56,75 @@ export class RelationService { // Renamed from CitizenService
     const relation = this.relationRepository.create({ // Renamed from citizen
       ...createRelationDto,
       family: parentFamily, // Assign the found parent Family entity, assuming 'family' is the field in Relation entity
+      merkleRoot: '', // Initialize merkleRoot, assuming it will be updated later
     });
 
     return this.relationRepository.save(relation);
   }
 
-  async findRelationWithLineage(relationIdentifier: string) { // Renamed from findCitizenInCountrysByRelationship
-    console.log(`[LINEAGE] Searching for relation with identifier: ${relationIdentifier}`);
-    const relation = await this.relationRepository.findOne({ // Renamed from citizen
-      where: [
-        { citizenId: relationIdentifier }, 
-      ],
+  async findRelationWithLineage(identifier: string) {
+    console.log(`[LINEAGE] Attempting to find relation directly by citizenId: ${identifier}`);
+    let relation = await this.relationRepository.findOne({
+      where: { citizenId: identifier },
       relations: [
         'family',
-        'family.parentFamily', // Corrected: Was family.parentCountry
-        'family.parentFamily.parentFamily', // Corrected: Was family.parentCountry.parentCountry
+        'family.parentFamily',
+        'family.parentFamily.parentFamily',
+        'family.parentFamily.parentFamily.parentFamily',
       ],
     });
 
     if (!relation) {
-      console.log(`[LINEAGE] Relation not found: ${relationIdentifier}`);
-      throw new NotFoundException(`Relation with identifier '${relationIdentifier}' not found.`);
+      console.log(`[LINEAGE] No relation found with citizenId: ${identifier}. Attempting to find via family countryId.`);
+      const familyByCountryId = await this.familyRepository.findOne({
+        where: { countryId: identifier },
+        relations: [
+          'relation', // Corrected from 'citizens' to 'relation'
+          'relation.family', // Eager load family for the relations found
+        ],
+      });
+
+      if (familyByCountryId) {
+        console.log(`[LINEAGE] Found family '${familyByCountryId.name}' (Family ID: ${familyByCountryId.countryId}) using identifier '${identifier}' as countryId.`);
+        if (familyByCountryId.relation && familyByCountryId.relation.length > 0) {
+          const firstRelationInFamily = familyByCountryId.relation[0];
+          console.log(`[LINEAGE] Selected first relation '${firstRelationInFamily.firstName} ${firstRelationInFamily.lastName}\' (Internal DB ID: ${firstRelationInFamily.id}, CitizenID: ${firstRelationInFamily.citizenId}) from this family to display lineage.`);
+
+          // Re-fetch this specific relation with its full lineage relations
+          relation = await this.relationRepository.findOne({
+            where: { id: firstRelationInFamily.id },
+            relations: [
+              'family',
+              'family.parentFamily',
+              'family.parentFamily.parentFamily',
+              'family.parentFamily.parentFamily.parentFamily',
+            ],
+          });
+
+          if (!relation) {
+            console.error(`[LINEAGE] Critical error: Could not re-fetch relation with internal DB ID ${firstRelationInFamily.id} after finding it via family ${familyByCountryId.name}.`);
+            throw new NotFoundException(`Failed to load details for a member of family with identifier '${identifier}'.`);
+          }
+          console.log(`[LINEAGE] Successfully loaded relation ${relation.firstName} ${relation.lastName} (CitizenID: ${relation.citizenId}) for lineage display.`);
+        } else {
+          console.log(`[LINEAGE] Family with countryId '${identifier}' found, but it has no associated relations.`);
+          throw new NotFoundException(`Family with identifier '${identifier}' found, but it has no members to display lineage for.`);
+        }
+      } else {
+        console.log(`[LINEAGE] No relation found with citizenId '${identifier}' and no family found with countryId '${identifier}'.`);
+        throw new NotFoundException(`No relation or family found matching identifier '${identifier}'.`);
+      }
     }
-    console.log('[LINEAGE] Found relation:', relation.id, relation.citizenId, relation.firstName, relation.lastName);
+
+    if (!relation) {
+        console.log(`[LINEAGE] Final check: Relation object is unexpectedly null for identifier: ${identifier} after all attempts.`);
+        throw new NotFoundException(`Could not determine a relation to display lineage for identifier '${identifier}'.`);
+    }
+
+    console.log('[LINEAGE] Processing relation for lineage:', relation.id, relation.citizenId, relation.firstName, relation.lastName);
     console.log("[LINEAGE] Relation's direct parent family data:", JSON.stringify(relation.family, null, 2));
 
-    const targetRelationDetails = { // Renamed from targetCitizenDetails
+    const targetRelationDetails: FrontendRelation = {
       id: relation.id,
       citizenId: relation.citizenId,
       firstName: relation.firstName,
@@ -77,98 +132,76 @@ export class RelationService { // Renamed from CitizenService
       age: relation.age,
       email: relation.email,
       address: relation.address,
-      phone: relation.contactNumber,
-      relationshipToFamily: relation.relationship, // Renamed from relationshipToParentCountry
+      contactNumber: relation.contactNumber,
+      relationshipToFamily: relation.relationship,
+      merkleRoot: relation.merkleRoot || null,
     };
 
-    const lineage: Array<{
+    const lineagePayload: Array<{
       id: string;
-      familyId: string | null; 
+      familyId: string | null;
       name: string;
       location: string;
-      roleInFamily: string | undefined; 
+      roleInFamily: string | undefined | null;
     }> = [];
 
-    const ancestors = [];
-    let tempFamily = relation.family; 
-    console.log('[LINEAGE] Initial ancestor family for traversal:', JSON.stringify(tempFamily, null, 2));
+    const ancestors: Family[] = [];
+    let currentFamilyForLineage = relation.family;
 
-    while (tempFamily) {
-      ancestors.push(tempFamily);
-      console.log(`[LINEAGE] Added ancestor family to chain: ${tempFamily.countryId} - ${tempFamily.name}. Total ancestors in chain: ${ancestors.length}`);
-      // Corrected: Use parentFamily
-      if (tempFamily.parentFamily && !ancestors.find(a => a.id === tempFamily.parentFamily?.id)) { 
-        tempFamily = tempFamily.parentFamily; 
-        console.log('[LINEAGE] Moved to next ancestor family (parentFamily, already loaded):', JSON.stringify(tempFamily, null, 2));
-      } else if (tempFamily.parentFamily && ancestors.find(a => a.id === tempFamily.parentFamily?.id)) {
-        console.log('[LINEAGE] Circular dependency or already processed ancestor family. Breaking traversal.');
-        break; 
+    console.log('[LINEAGE] Starting ancestor traversal...');
+    while (currentFamilyForLineage) {
+      if (ancestors.find(a => a.id === currentFamilyForLineage.id)) {
+        console.warn(`[LINEAGE] Cycle detected in family lineage at family ID: ${currentFamilyForLineage.id}. Stopping traversal.`);
+        break;
       }
-      else {
-        console.log('[LINEAGE] Next ancestor family (parentFamily) not directly available as an object or end of chain. Current ancestor family:', JSON.stringify(tempFamily, null, 2));
-        // Attempt to access deeply loaded parent if available, otherwise set to null
-        // Corrected: Use parentFamily
-        if (relation.family?.parentFamily?.id === tempFamily.parentFamily?.id) {
-            tempFamily = relation.family.parentFamily; 
-        } else if (relation.family?.parentFamily?.parentFamily?.id === tempFamily.parentFamily?.id) { // Check one level deeper
-            tempFamily = relation.family.parentFamily.parentFamily; 
-        } else {
-            tempFamily = null; 
-        }
-        console.log('[LINEAGE] Next ancestor family after checking deep relations:', JSON.stringify(tempFamily, null, 2));
-
-        if (tempFamily && typeof tempFamily.id === 'undefined') {
-            console.log('[LINEAGE] Current ancestor family became invalid (no id). Setting to null for traversal stop.');
-            tempFamily = null;
-        }
-      }
+      ancestors.push(currentFamilyForLineage);
+      console.log(`[LINEAGE] Added ancestor: ${currentFamilyForLineage.name} (ID: ${currentFamilyForLineage.countryId}, DB_ID: ${currentFamilyForLineage.id}), Role: ${currentFamilyForLineage.relationship}. Total ancestors: ${ancestors.length}`);
+      currentFamilyForLineage = currentFamilyForLineage.parentFamily; // Relies on eager loaded parentFamily
     }
-    console.log(`[LINEAGE] Ancestor family traversal complete. Found ${ancestors.length} ancestors in the chain.`);
+    console.log(`[LINEAGE] Ancestor traversal complete. Found ${ancestors.length} ancestors.`);
 
     for (let i = ancestors.length - 1; i >= 0; i--) {
-      const ancestor = ancestors[i];
-      lineage.push({
-        id: ancestor.id,
-        familyId: ancestor.countryId, 
-        name: ancestor.name,
-        location: ancestor.location,
-        roleInFamily: ancestor.relationship, 
+      const familyMember = ancestors[i];
+      lineagePayload.push({
+        id: familyMember.id,
+        familyId: familyMember.countryId,
+        name: familyMember.name,
+        location: familyMember.location,
+        roleInFamily: familyMember.relationship,
       });
     }
+    console.log('[LINEAGE] Lineage payload populated:', JSON.stringify(lineagePayload, null, 2));
     
-    let siblingsDetails: Array<{
-      id: string;
-      citizenId: string | null; 
-      firstName: string;
-      lastName: string;
-      age: string;
-      relationshipToFamily: string | undefined; 
-    }> = [];
+    let siblingsDetails: FrontendRelation[] = [];
 
     if (relation.family) {
-      const directParentFamilyWithAllMembers = await this.familyRepository.findOne({ 
-        where: { id: relation.family.id },
-        relations: ['relation'], // Corrected: Family.relation (singular) for child Relations
+      const otherRelationsInFamily = await this.relationRepository.find({
+        where: { family: { id: relation.family.id } },
       });
+      console.log(`[LINEAGE] Found ${otherRelationsInFamily.length} relations in the same family (DB_ID: ${relation.family.id}) as the target.`);
 
-      // Corrected: Check Family.relation (singular)
-      if (directParentFamilyWithAllMembers && directParentFamilyWithAllMembers.relation) { 
-        siblingsDetails = directParentFamilyWithAllMembers.relation 
-          .filter(r => r.id !== relation.id) 
-          .map(s => ({
-            id: s.id,
-            citizenId: s.citizenId, 
-            firstName: s.firstName,
-            lastName: s.lastName,
-            age: s.age,
-            relationshipToFamily: s.relationship, 
-          }));
-      }
+      siblingsDetails = otherRelationsInFamily
+        .filter(r => r.id !== relation.id)
+        .map(sibling => ({
+          id: sibling.id,
+          citizenId: sibling.citizenId,
+          firstName: sibling.firstName,
+          lastName: sibling.lastName,
+          age: sibling.age,
+          email: sibling.email,
+          address: sibling.address,
+          contactNumber: sibling.contactNumber,
+          relationshipToFamily: sibling.relationship,
+          merkleRoot: sibling.merkleRoot || null,
+        }));
+      console.log(`[LINEAGE] Processed ${siblingsDetails.length} siblings:`, JSON.stringify(siblingsDetails, null, 2));
+    } else {
+      console.log('[LINEAGE] Target relation has no associated family, cannot find siblings.');
     }
 
     return {
-      targetRelation: targetRelationDetails, 
-      lineage: lineage, 
+      targetRelation: targetRelationDetails,
+      lineagePath: lineagePayload, // Renamed from lineage to lineagePath for consistency with frontend
       siblings: siblingsDetails,
     };
   }
@@ -264,7 +297,7 @@ function toMerklePatientRow(relation: Relation): { country_id: string | null; re
     return { country_id: null, relation: null, citizen_id: null };
   }
   return {
-    country_id: relation.family?.countryId || null, // Assumes family's public ID is countryId
+    country_id: relation.family?.countryId || null,
     relation: relation.relationship || null,
     citizen_id: relation.citizenId || null,
   };

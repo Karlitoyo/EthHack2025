@@ -36,6 +36,9 @@ export class Relation {
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 
+  @Column({ nullable: true }) // Add merkleRoot field
+  merkleRoot?: string;
+
   @ManyToOne(() => Family, family => family.relation)
   family: Family;
 }
