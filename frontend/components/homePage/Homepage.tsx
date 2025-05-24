@@ -58,18 +58,6 @@ const ZKComponent = () => {
 
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-base-200 p-4">
-            <DropdownMenu>
-                <DropdownMenuTrigger className='btn btn-primary mb-2'>Open</DropdownMenuTrigger>
-                <DropdownMenuContent>
-                    <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                    <Divider className='w-full'/>
-                    <DropdownMenuItem>Profile</DropdownMenuItem>
-                    <DropdownMenuItem>Billing</DropdownMenuItem>
-                    <DropdownMenuItem>Team</DropdownMenuItem>
-                    <DropdownMenuItem>Subscription</DropdownMenuItem>
-                </DropdownMenuContent>
-                </DropdownMenu>
-
             <div className="card w-full max-w-lg bg-base-100 shadow-xl">
             <div className="card-body">
                 <h1 className="card-title text-2xl font-bold">ZK-SNARK Example</h1>
