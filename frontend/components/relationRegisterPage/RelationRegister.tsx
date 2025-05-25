@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Family } from '../../interfaces'; // Import the new Family interface
 
-const PatientComponent = () => {
+const RelationComponent = () => {
     const [proof, setProof] = useState(null);
     const [isValid, setIsValid] = useState<boolean | null>(null);
     const [modalMessage, setModalMessage] = useState('');
@@ -9,7 +9,7 @@ const PatientComponent = () => {
     const [families, setFamilies] = useState<Family[]>([]); // Use the imported Family interface
 
     const [formData, setFormData] = useState({
-        patientId: '',
+        relationId: '',
         firstName: '',
         lastName: '',
         age: '',
@@ -57,7 +57,7 @@ const PatientComponent = () => {
 
         // Transform formData to match backend DTO
         const payload = {
-            citizenId: formData.patientId, // Map patientId to citizenId
+            citizenId: formData.relationId, // Map patientId to citizenId
             firstName: formData.firstName,
             lastName: formData.lastName,
             age: formData.age,
@@ -130,8 +130,8 @@ const PatientComponent = () => {
                                     <span className="label-text font-medium">ID</span>
                                 </label>
                                 <input type="text"
-                                    name="patientId"
-                                    value={formData.patientId}
+                                    name="relationId"
+                                    value={formData.relationId}
                                     onChange={handleChange}
                                     required
                                     autoComplete="off"
@@ -294,4 +294,4 @@ const PatientComponent = () => {
     );
 };
 
-export default PatientComponent;
+export default RelationComponent;

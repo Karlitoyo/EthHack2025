@@ -6,14 +6,14 @@ interface CountryForSelect {
     relationship: string;
 }
 
-const HospitalComponent = () => {
+const FamilyComponent = () => {
     const [modalMessage, setModalMessage] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSuccess, setIsSuccess] = useState<boolean | null>(null); // To track success/error for modal styling
     const [availableParentCountries, setAvailableParentCountries] = useState<CountryForSelect[]>([]);
 
     const [formData, setFormData] = useState({
-        hospitalId: '',
+        familyId: '',
         name: '',
         location: '',
         treatment: '',
@@ -48,12 +48,12 @@ const HospitalComponent = () => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    const generateHospital = async () => {
+    const generateFamily = async () => {
         setIsModalOpen(false); // Close previous modal if open
 
         // Transform formData to match backend DTO
         const payload = {
-            countryId: formData.hospitalId, // Map hospitalId to countryId
+            countryId: formData.familyId, // Map hospitalId to countryId
             name: formData.name,
             location: formData.location,
             relationship: formData.treatment, // Map treatment to relationship
@@ -86,15 +86,15 @@ const HospitalComponent = () => {
 
             if (response.ok) {
                 setIsSuccess(true);
-                setModalMessage('Hospital created successfully!');
+                setModalMessage('Base relation created successfully!');
             } else {
                 setIsSuccess(false);
                 console.error("Backend error response details:", result);
-                setModalMessage(result?.message || `Failed to create hospital (Status: ${response.status})`);
+                setModalMessage(result?.message || `Failed to create Base relation (Status: ${response.status})`);
             }
             setIsModalOpen(true);
         } catch (error) {
-            console.error('Hospital creation fetch/network error:', error);
+            console.error('Base relation creation fetch/network error:', error);
             setIsSuccess(false);
             setModalMessage('An error occurred connecting to the server.');
             setIsModalOpen(true);
@@ -121,8 +121,8 @@ const HospitalComponent = () => {
                                     <span className="label-text font-medium">ID</span>
                                 </label>
                                 <input type="text"
-                                    name="hospitalId"
-                                    value={formData.hospitalId}
+                                    name="familyId"
+                                    value={formData.familyId}
                                     onChange={handleChange}
                                     required
                                     autoComplete="off"
@@ -230,7 +230,7 @@ const HospitalComponent = () => {
                     </form>
 
                     <div className="flex gap-2 mb-4 mt-4">
-                        <button className="btn btn-primary" onClick={generateHospital}>Create Hospital</button>
+                        <button className="btn btn-primary" onClick={generateFamily}>Create Relation</button>
                     </div>
                 </div>
             </div>
@@ -254,4 +254,4 @@ const HospitalComponent = () => {
     );
 };
 
-export default HospitalComponent;
+export default FamilyComponent;

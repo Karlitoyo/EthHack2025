@@ -2,7 +2,7 @@ import Layout from "../components/Layout";
 import FamilySearch from "../components/returnData/ReturnData"; // Updated import
 
 const IndexPage = () => (
-  <Layout title="Home | Next.js + TypeScript Example">
+  <Layout title="Return Relation | KinChain">
     <FamilySearch />
   </Layout>
 );

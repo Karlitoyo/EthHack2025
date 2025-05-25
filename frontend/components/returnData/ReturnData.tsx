@@ -11,14 +11,16 @@ export default function FamilySearch() {
 
     const fetchFamilyData = async () => {
         if (!citizenId.trim()) {
-            setError('Please enter a Citizen ID.');
+            setError('Please enter a Family ID.');
             setData(null); // Clear previous data if any
             return;
         }
 
         setLoading(true);
-        setError(null); // Clear any previous error (validation or backend)
+        setError(null); // Clear any previous error
         setData(null);
+
+        let errorToShow: string | null = null;
 
         try {
             const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/relation/lineage/${citizenId}`);
@@ -26,34 +28,40 @@ export default function FamilySearch() {
             if (!res.ok) {
                 let errorPayloadMessage = `Error: ${res.status} ${res.statusText || 'Server Error'}`;
                 try {
+                    // Attempt to parse a JSON error response from the backend
                     const errorData = await res.json();
                     if (errorData && errorData.message) {
                         errorPayloadMessage = errorData.message;
                     }
                 } catch (jsonError) {
+                    // If the error response isn't JSON or parsing fails, log it and use the HTTP status based message
                     console.warn('Could not parse error response as JSON.', jsonError);
                 }
-                throw new Error(errorPayloadMessage);
-            }
-
-            const json: LineageData = await res.json();
-            setData(json);
-
-        } catch (err: any) {
-            console.error('Error fetching data:', err);
-            
-            const errorMessage = (err instanceof Error && err.message) 
-                               ? err.message 
-                               : 'Failed to fetch family data. An unexpected error occurred.';
-            setError(errorMessage);
-
-            if (errorModalRef.current) {
-                errorModalRef.current.showModal();
+                errorToShow = errorPayloadMessage; // Set message to be handled in finally
+                console.error('API Error:', errorPayloadMessage); // Log API specific errors
             } else {
-                console.warn("Error modal ref is not available. Ensure 'errorModalRef' is defined and passed to a <dialog> element.");
+                // If response is OK, parse and set data
+                const json: LineageData = await res.json();
+                setData(json);
             }
+
+        } catch (err: any) { // Catches network errors or issues with res.json() if res was ok
+            console.error('Fetch/Processing Error:', err); // Log unexpected errors
+            
+            // Set a user-friendly error message
+            errorToShow = (err instanceof Error && err.message) 
+                               ? err.message 
+                               : 'Failed to fetch family data. An unexpected network or parsing error occurred.';
         } finally {
             setLoading(false);
+            if (errorToShow) {
+                setError(errorToShow); // Update React state with the error message
+                if (errorModalRef.current) {
+                    errorModalRef.current.showModal(); // Show the error modal
+                } else {
+                    console.warn("Error modal ref is not available. Ensure 'errorModalRef' is defined and passed to a <dialog> element.");
+                }
+            }
         }
     };
 

@@ -2,7 +2,7 @@ import Layout from "../components/Layout";
 import GenerateProof from "../components/generateProofPage/GenerateProofPage";
 
 const GenerateProofPage = () => (
-  <Layout title="Home | Next.js + TypeScript Example">
+  <Layout title="Generate Proof Page | KinChain">
     < GenerateProof />
   </Layout>
 );

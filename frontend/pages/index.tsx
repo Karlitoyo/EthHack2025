@@ -1,9 +1,9 @@
 import Layout from "../components/Layout";
-import HospitalPage from "../components/hospitalPage/HospitalPage";
+import FamilyComponent from "../components/FamilyRegisterPage/FamilyRegister";
 
 const IndexPage = () => (
-  <Layout title="Hospital | ZK Medical Data">
-    <HospitalPage />
+  <Layout title="Relation Page | KinChain">
+    <FamilyComponent />
   </Layout>
 );
 
