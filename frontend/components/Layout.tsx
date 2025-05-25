@@ -32,7 +32,7 @@ const Layout = ({ children, title = "This is the default title" }: Props) => (
     {children}
     <footer className="footer sm:footer-horizontal footer-center bg-base-300 text-base-content p-4 fixed bottom-0 w-full">
       <aside>
-        <p>Karl Timmins Dissertation Copyright © {new Date().getFullYear()} - Zero Knowledge Medical Data</p>
+        <p>KinChain Copyright © {new Date().getFullYear()} - Zero Knowledge Family Records</p>
       </aside>
     </footer>
   </div>

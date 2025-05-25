@@ -39,5 +39,7 @@ export class CitizenDataDto {
 
   @IsNotEmpty()
   @IsString()
-  parentCountryId: string;
+  parentFamilyId: string;
+
+  isFamilyHead?: boolean; // Optional: Add isFamilyHead to DTO
 }

@@ -20,7 +20,7 @@ const FamilyComponent = () => {
         contactNumber: '',
         adminName: '',
         capacity: '',
-        parentCountryId: '', // Added for parent selection
+        parentFamilyId: '', // Added for parent selection
     });
     console.log('Form data:', formData);
 
@@ -60,7 +60,7 @@ const FamilyComponent = () => {
             contactNumber: formData.contactNumber,
             adminName: formData.adminName,
             capacity: formData.capacity,
-            parentCountryId: formData.parentCountryId || undefined, // Send if selected, otherwise undefined
+            parentFamilyId: formData.parentFamilyId || undefined, // Send if selected, otherwise undefined
         };
 
         try {
@@ -214,8 +214,8 @@ const FamilyComponent = () => {
                                 <span className="label-text font-medium">Parent Family Unit (Optional)</span>
                             </label>
                             <select
-                                name="parentCountryId"
-                                value={formData.parentCountryId}
+                                name="parentFamilyId"
+                                value={formData.parentFamilyId}
                                 onChange={handleChange}
                                 className="select select-bordered w-full"
                             >

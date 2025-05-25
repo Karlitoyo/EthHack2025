@@ -22,6 +22,7 @@ export interface FamilySummary {
   name: string;
   location: string;
   roleInFamily?: string | null;
+  members: Relation[]; // Added to match backend LineagePathItem
 }
 
 export interface Family {

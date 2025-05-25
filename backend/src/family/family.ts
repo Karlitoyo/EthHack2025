@@ -16,8 +16,7 @@ export class FamilyService { // Renamed from CountryService to FamilyService
     }
     
     async createFamily(familyData: CountryDataDto): Promise<Family> { // Renamed from createCountry, DTO type kept as CountryDataDto
-        // DTO uses countryId and parentCountryId, mapping to Family entity's countryId and parentFamilyId
-        const { countryId, parentCountryId, ...otherData } = familyData;
+        const { countryId, parentFamilyId, ...otherData } = familyData;
 
         // Check if a family with the same user-defined countryId already exists
         const existingFamily = await this.familyRepository.findOne({ where: { countryId: countryId } }); // countryId is the public ID
@@ -31,12 +30,12 @@ export class FamilyService { // Renamed from CountryService to FamilyService
             ...otherData, // Other fields like name, location, relationship etc.
         };
 
-        if (parentCountryId) { // DTO provides parentCountryId
+        if (parentFamilyId) { // DTO provides parentFamilyId
             const parent = await this.familyRepository.findOne({ 
-                where: { countryId: parentCountryId } // Find parent by its user-defined public countryId
+                where: { countryId: parentFamilyId } // Find parent by its user-defined public countryId
             });
             if (!parent) {
-                throw new NotFoundException(`Parent Family with ID "${parentCountryId}" not found. Cannot link.`); // Updated message
+                throw new NotFoundException(`Parent Family with ID "${parentFamilyId}" not found. Cannot link.`); // Updated message
             }
             newFamilyEntityData.parentFamily = parent; // Link the actual entity for the ManyToOne relationship (uses parentFamily)
             newFamilyEntityData.parentFamilyId = parent.id; // Store the internal DB ID of the parent in parentFamilyId

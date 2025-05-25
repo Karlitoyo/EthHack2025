@@ -33,6 +33,9 @@ export class Relation {
   @Column({ nullable: true })
   contactNumber?: string;
   
+  @Column({ default: false }) // Add isFamilyHead field
+  isFamilyHead: boolean;
+
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 

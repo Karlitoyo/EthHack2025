@@ -31,5 +31,5 @@ export class CountryDataDto {
 
   @IsOptional()
   @IsString()
-  parentCountryId?: string;
+  parentFamilyId?: string;
 }

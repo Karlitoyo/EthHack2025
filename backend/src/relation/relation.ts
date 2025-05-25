@@ -29,6 +29,7 @@ export interface LineagePathItem {
     name: string;
     location: string;
     roleInFamily: string | undefined | null;
+    members: FrontendRelation[]; // Added members
 }
 
 // Define and export the overall response structure for findRelationWithLineage
@@ -50,7 +51,7 @@ export class RelationService {
   ) {}
 
   async createRelation(createRelationDto: CitizenDataDto): Promise<Relation> {
-    const { citizenId, relationship, parentCountryId: parentFamilyId } = createRelationDto;
+    const { citizenId, relationship, parentFamilyId: parentFamilyId, isFamilyHead } = createRelationDto;
 
     const existingRelation = await this.relationRepository.findOne({
       where: { citizenId }, 
@@ -74,6 +75,7 @@ export class RelationService {
       ...createRelationDto,
       family: parentFamily,
       merkleRoot: '', // Initialize merkleRoot, e.g., to an empty string or null
+      isFamilyHead: isFamilyHead || false, // Set isFamilyHead
     });
 
     return this.relationRepository.save(relation);
@@ -109,7 +111,7 @@ export class RelationService {
             // The childFamily object here is from the parent's list.
             // The recursive call will reload it by its ID to get its own relations/children.
             const foundRelation = await this.findFirstDescendantRelation(childFamily);
-            if (foundRelation) {
+            if (foundRelation) { // Added check and return
                 console.log(`[DESCENDANT_SEARCH] Found descendant relation via child family ${childFamily.name} (ID: ${childFamily.countryId}).`);
                 return foundRelation; // Found a relation in a descendant branch
             }
@@ -143,9 +145,14 @@ export class RelationService {
         
         let relationToUse: Relation | null = null;
 
+        // Updated logic to find the family head or fallback
         if (familySearchedById.relation && familySearchedById.relation.length > 0) {
-          relationToUse = familySearchedById.relation[0];
-          console.log(`[LINEAGE] Using direct relation '${relationToUse.firstName} ${relationToUse.lastName}' (DB ID: ${relationToUse.id}) of family '${familySearchedById.name}' as target.`);
+          relationToUse = familySearchedById.relation.find(r => r.isFamilyHead) || familySearchedById.relation[0];
+          if (familySearchedById.relation.find(r => r.isFamilyHead)) {
+            console.log(`[LINEAGE] Using family head relation '${relationToUse.firstName} ${relationToUse.lastName}' (DB ID: ${relationToUse.id}) of family '${familySearchedById.name}' as target.`);
+          } else {
+            console.log(`[LINEAGE] No family head found. Using first available relation '${relationToUse.firstName} ${relationToUse.lastName}' (DB ID: ${relationToUse.id}) of family '${familySearchedById.name}' as target.`);
+          }
         } else {
           console.log(`[LINEAGE] Family '${familySearchedById.name}' has no direct relations. Searching for a descendant relation.`);
           relationToUse = await this.findFirstDescendantRelation(familySearchedById);
@@ -197,6 +204,7 @@ export class RelationService {
       contactNumber: targetRelationEntity.contactNumber,
       relationshipToFamily: targetRelationEntity.relationship,
       merkleRoot: targetRelationEntity.merkleRoot || null,
+      // isFamilyHead: targetRelationEntity.isFamilyHead, // Add if you want to pass this to frontend
     };
 
     const lineagePayload: LineagePathItem[] = [];
@@ -215,17 +223,46 @@ export class RelationService {
     }
     console.log(`[LINEAGE] Ancestor traversal complete. Found ${ancestors.length} ancestors.`);
 
+    // Ensure members are loaded for the targetRelation's family, as it might not be part of ancestors if it's the root
+    if (targetRelationEntity.family && !ancestors.find(a => a.id === targetRelationEntity.family.id)) {
+      const relationsInTargetFamily = await this.relationRepository.find({
+        where: { family: { id: targetRelationEntity.family.id } },
+      });
+      // Add members to the family object if it's directly on targetRelationEntity and not yet processed
+      // This scenario is less likely if lineagePath always includes the immediate family, but good for robustness.
+    }
+
+
     for (let i = ancestors.length - 1; i >= 0; i--) {
-      const familyMember = ancestors[i];
+      const familyMember = ancestors[i]; // This is a Family entity
+
+      // Fetch members of this familyMember (Family entity)
+      const relationsInFamily = await this.relationRepository.find({
+        where: { family: { id: familyMember.id } },
+      });
+      const members: FrontendRelation[] = relationsInFamily.map(r => ({
+        id: r.id,
+        citizenId: r.citizenId,
+        firstName: r.firstName,
+        lastName: r.lastName,
+        age: r.age,
+        email: r.email,
+        address: r.address,
+        contactNumber: r.contactNumber,
+        relationshipToFamily: r.relationship, // This is Relation.relationship (e.g., "Son", "Head")
+        merkleRoot: r.merkleRoot || null,
+      }));
+
       lineagePayload.push({
         id: familyMember.id,
         familyId: familyMember.countryId,
         name: familyMember.name,
         location: familyMember.location,
-        roleInFamily: familyMember.relationship,
+        roleInFamily: familyMember.relationship, // This is Family.relationship (e.g., "Main Branch", "Cadet Branch")
+        members: members, // Add the populated members
       });
     }
-    console.log('[LINEAGE] Lineage payload populated:', JSON.stringify(lineagePayload, null, 2));
+    console.log('[LINEAGE] Lineage payload populated (structure might be too large for full log):', lineagePayload.map(p => ({...p, members: p.members.length + ' members'})));
     
     let siblingsDetails: FrontendRelation[] = [];
     if (targetRelationEntity.family) {
@@ -260,36 +297,94 @@ export class RelationService {
     };
   }
 
-  async prepareLineageProofInputs(descendantId: string, relationshipType: string) {
+  async prepareLineageProofInputs(identifier: string /*, relationshipType?: string */) { // relationshipType might be deprecated or derived
     console.log(
-      `[START] prepareLineageProofInputs for descendantId=${descendantId}, relationshipType=${relationshipType}`,
+      `[START] prepareLineageProofInputs for identifier=${identifier}`
     );
 
-    console.log(
-      `[1] Finding descendant relation with ID=${descendantId} and relationship='${relationshipType}' to their direct ancestor family`,
-    );
-    const relationEntity = await this.relationRepository.findOne({ 
-      where: { citizenId: descendantId, relationship: relationshipType }, 
+    let relationEntity: Relation | null = null;
+    let identifiedFamily: Family | null = null;
+
+    // Try to find by citizenId first
+    relationEntity = await this.relationRepository.findOne({ 
+      where: { citizenId: identifier }, 
       relations: ['family'], 
     });
-    if (!relationEntity) { 
-      console.error(
-        `[ERROR] Descendant relation not found with ID=${descendantId} and relationship='${relationshipType}' to their direct ancestor family`,
-      );
-      throw new NotFoundException(`Relation not found with ID=${descendantId} and relationship=${relationshipType}`);
-    }
-    console.log(`[1] Found descendant relation: ${relationEntity.firstName} ${relationEntity.lastName} (ID: ${relationEntity.citizenId})`);
 
-    const ancestorFamily = relationEntity.family; 
-    if (!ancestorFamily || !ancestorFamily.countryId) { 
-      console.error(
-        '[ERROR] Descendant relation has invalid ancestor family assignment:',
-        ancestorFamily,
-      );
-      throw new Error('Bad family (ancestor) assignment for relation'); 
+    if (relationEntity) {
+      console.log(`[1] Found relation directly by citizenId: ${relationEntity.firstName} ${relationEntity.lastName} (ID: ${relationEntity.citizenId})`);
+      if (!relationEntity.family) {
+        console.error(`[ERROR] Relation ${relationEntity.citizenId} does not have a linked family.`);
+        throw new NotFoundException(`Relation ${relationEntity.citizenId} is not linked to any family.`);
+      }
+      identifiedFamily = relationEntity.family;
+    } else {
+      // If not found by citizenId, try to find by family.countryId and then get the head
+      console.log(`[1] Relation not found by citizenId '${identifier}'. Trying to find Family by countryId '${identifier}'.`);
+      identifiedFamily = await this.familyRepository.findOne({
+        where: { countryId: identifier },
+        relations: ['relation'], // Need relations to find the head
+      });
+
+      if (identifiedFamily) {
+        console.log(`[1] Found family: ${identifiedFamily.name} (ID: ${identifiedFamily.countryId})`);
+        if (identifiedFamily.relation && identifiedFamily.relation.length > 0) {
+          const chosenRelationBrief = identifiedFamily.relation.find(r => r.isFamilyHead) || identifiedFamily.relation[0]; // Prioritize head, fallback to first
+          
+          if (!chosenRelationBrief) {
+             console.error(`[ERROR] Family ${identifiedFamily.countryId} has relations but failed to select one (e.g., array contained only nulls).`);
+             throw new NotFoundException(`Could not select a representative relation for family ${identifiedFamily.countryId}.`);
+          }
+          console.log(`[1] Tentatively selected relation: ${chosenRelationBrief.firstName} ${chosenRelationBrief.lastName} (DB ID: ${chosenRelationBrief.id}, CitizenID: ${chosenRelationBrief.citizenId}, Head: ${chosenRelationBrief.isFamilyHead}) from family ${identifiedFamily.name}. Reloading with family details...`);
+
+          // Reload the chosen relation to ensure its 'family' relation is loaded
+          relationEntity = await this.relationRepository.findOne({
+            where: { id: chosenRelationBrief.id },
+            relations: ['family'],
+          });
+
+          if (!relationEntity) {
+            console.error(`[ERROR] Failed to reload relation with DB ID ${chosenRelationBrief.id}. This should not happen if it was found in identifiedFamily.relation.`);
+            throw new NotFoundException(`Could not load details for the selected representative relation (DB ID: ${chosenRelationBrief.id}) from family ${identifiedFamily.countryId}.`);
+          }
+
+          // Verification step: Ensure the reloaded relation is indeed part of the identified family
+          if (!relationEntity.family || relationEntity.family.id !== identifiedFamily.id) {
+              console.error(`[CRITICAL ERROR] Mismatch or missing family after reloading relation ${relationEntity.id}. Expected family ID ${identifiedFamily.id} (countryId: ${identifiedFamily.countryId}), but reloaded relation's family is ID ${relationEntity.family?.id} (countryId: ${relationEntity.family?.countryId}).`);
+              throw new Error('Internal error: Family context mismatch after reloading relation. The reloaded relation is not correctly associated with the identified family.');
+          }
+          
+          console.log(`[1] Successfully selected and reloaded relation for proof: ${relationEntity.firstName} ${relationEntity.lastName} (CitizenID: ${relationEntity.citizenId}, Head: ${relationEntity.isFamilyHead}) from family ${relationEntity.family.name} (Family CountryID: ${relationEntity.family.countryId})`);
+        } else {
+          console.error(`[ERROR] Family ${identifiedFamily.countryId} has no relations.`);
+          throw new NotFoundException(`Family ${identifiedFamily.countryId} found, but it has no associated relations to generate a proof for.`);
+        }
+      } else {
+        console.error(`[ERROR] No relation found with citizenId='${identifier}' and no family found with countryId='${identifier}'.`);
+        throw new NotFoundException(`No relation or family found matching identifier '${identifier}'.`);
+      }
     }
+
+    if (!relationEntity || !relationEntity.family || !relationEntity.family.countryId || !relationEntity.relationship || !relationEntity.citizenId) {
+      console.error(
+        '[ERROR] Critical: Could not establish a valid relation entity with required fields (citizenId, family, family.countryId, relationship) for proof generation.',
+        { 
+          relationId: relationEntity?.id,
+          citizenId: relationEntity?.citizenId,
+          familyDBId: relationEntity?.family?.id, // Log family's DB ID
+          familyCountryId: relationEntity?.family?.countryId, 
+          relationship: relationEntity?.relationship 
+        }
+      );
+      throw new Error('Failed to prepare a valid relation for proof. Missing essential link details.');
+    }
+    
+    const ancestorFamilyId = relationEntity.family.countryId;
+    const actualRelationshipType = relationEntity.relationship; // This is the 'treatment' or link type
+    const descendantCitizenId = relationEntity.citizenId;
+
     console.log(
-      `[1] Ancestor family for the link verified: ${ancestorFamily.name} (ID: ${ancestorFamily.countryId})`, 
+      `[1] Proof target: Descendant '${descendantCitizenId}' (${actualRelationshipType}) -> Ancestor Family '${ancestorFamilyId}'`
     );
 
     console.log('[2] Collecting all relation-ancestor links for Merkle tree');
@@ -309,7 +404,17 @@ export class RelationService {
     console.log('[4] Converting specific lineage link (descendant-ancestor) to Merkle leaf format');
     const queryRelationLink = toMerklePatientRow(relationEntity); 
     if (!queryRelationLink.country_id || !queryRelationLink.relation || !queryRelationLink.citizen_id) {
-        throw new Error('Failed to convert the target relation to a valid Merkle leaf row.');
+        // Add more detailed logging here if this error occurs
+        console.error('Failed to convert target relation to Merkle leaf. Details:', {
+            relationEntityId: relationEntity.id,
+            familyCountryId: relationEntity.family?.countryId,
+            relationship: relationEntity.relationship,
+            citizenId: relationEntity.citizenId,
+            convertedCountryId: queryRelationLink.country_id,
+            convertedRelation: queryRelationLink.relation,
+            convertedCitizenId: queryRelationLink.citizen_id,
+        });
+        throw new Error('Failed to convert the target relation to a valid Merkle leaf row. Essential fields were missing or null after conversion.');
     }
     console.log(
       '[4] Specific lineage link data for Merkle leaf (PatientRow format):',

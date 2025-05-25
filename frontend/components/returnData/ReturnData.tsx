@@ -119,43 +119,82 @@ export default function FamilySearch() {
                 <div className="mt-6 bg-base-200 shadow-xl rounded-lg p-4 sm:p-6">
                     <h2 className="text-2xl font-bold mb-4 text-center text-primary">Lineage Information</h2>
                     
-                    {/* Target Relation Details */}
-                    <div className="mb-6 pb-4 border-b border-base-300">
-                        <h3 className="text-xl font-semibold mb-2 text-accent">Target Individual</h3>
-                        <p><span className="font-medium">Name:</span> {data.targetRelation.firstName} {data.targetRelation.lastName}</p>
-                        <p><span className="font-medium">ID:</span> {data.targetRelation.id}</p>
-                    </div>
-
-                    {/* Lineage Path (Ancestors) */}
-                    {data.lineagePath && data.lineagePath.length > 0 && (
+                    {/* Target Relation Details - Displayed first */} 
+                    {data.targetRelation && (
                         <div className="mb-6 pb-4 border-b border-base-300">
-                            <h3 className="text-xl font-semibold mb-2 text-accent">Ancestral Lineage</h3>
-                            <ul className="list-disc list-inside pl-4">
-                                {data.lineagePath.map((ancestor, index) => (
-                                    <li key={ancestor.id} className="mb-1">
-                                        {ancestor.name} {ancestor.roleInFamily ? `(${ancestor.roleInFamily})` : ''} (Family ID: {ancestor.familyId || 'N/A'})
+                            <h3 className="text-xl font-semibold mb-3 text-accent">Queried Individual</h3>
+                            <div className="card bg-base-100 shadow-md p-4">
+                                <p><strong>Name:</strong> {data.targetRelation.firstName} {data.targetRelation.lastName} (ID: {data.targetRelation.citizenId || 'N/A'})</p>
+                                <p><strong>Age:</strong> {data.targetRelation.age}</p>
+                                <p><strong>Relationship to their direct Family Unit:</strong> {data.targetRelation.relationshipToFamily || 'N/A'}</p>
+                                {data.targetRelation.email && <p><strong>Email:</strong> {data.targetRelation.email}</p>}
+                                {data.targetRelation.address && <p><strong>Address:</strong> {data.targetRelation.address}</p>}
+                                {data.targetRelation.contactNumber && <p><strong>Contact:</strong> {data.targetRelation.contactNumber}</p>}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Lineage Path (Ancestral Family Units and their members) */} 
+                    {data.lineagePath && data.lineagePath.length > 0 && (
+                        <div className="mb-6 pb-4">
+                            <h3 className="text-xl font-semibold mb-3 text-accent">Ancestral Lineage</h3>
+                            <ul className="space-y-6">
+                                {data.lineagePath.map((familyUnit, index) => (
+                                    <li key={familyUnit.id} className="card bg-base-100 shadow-md p-4">
+                                        <div className="mb-2">
+                                            <h4 className="text-lg font-semibold">Family Unit: {familyUnit.name} (ID: {familyUnit.familyId || 'N/A'})</h4>
+                                            <p className="text-sm text-gray-600">Location: {familyUnit.location}</p>
+                                            <p className="text-sm text-gray-600">Role in Overall Lineage: {familyUnit.roleInFamily || 'N/A'}</p>
+                                        </div>
+                                        {familyUnit.members && familyUnit.members.length > 0 && (
+                                            <div>
+                                                <h5 className="font-medium mb-1">Members of this Family Unit:</h5>
+                                                <ul className="list-disc list-inside pl-4 space-y-1 text-sm">
+                                                    {familyUnit.members.map(member => (
+                                                        <li key={member.id}>
+                                                            {member.firstName} {member.lastName} (ID: {member.citizenId || 'N/A'}) - Role: {member.relationshipToFamily || 'N/A'}
+                                                            {/* Display other member details if needed, e.g., age, email */} 
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                        {(!familyUnit.members || familyUnit.members.length === 0) && (
+                                            <p className="text-sm text-gray-500 italic">No direct members listed for this specific family unit in the lineage path.</p>
+                                        )}
+                                        {/* Visual connector for lineage if not the last item */} 
+                                        {index < data.lineagePath.length - 1 && (
+                                            <div className="flex justify-center my-3">
+                                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-gray-400">
+                                                    <path d="M12 5V19M12 19L12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                                    <path d="M12 19L8 15M12 19L16 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                                </svg>
+                                            </div>
+                                        )}
                                     </li>
                                 ))}
                             </ul>
                         </div>
                     )}
 
-                    {/* Siblings Details */}
+                    {/* Siblings Details - Displayed last */} 
                     {data.siblings && data.siblings.length > 0 && (
-                        <div className="mb-6">
-                            <h3 className="text-xl font-semibold mb-2 text-accent">Siblings</h3>
-                            <ul className="list-disc list-inside pl-4">
+                        <div className="mt-6 pt-4 border-t border-base-300">
+                            <h3 className="text-xl font-semibold mb-3 text-accent">Siblings (Members of the same direct Family Unit as Queried Individual)</h3>
+                            <ul className="space-y-3">
                                 {data.siblings.map(sibling => (
-                                    <li key={sibling.id} className="mb-1">
-                                        {sibling.firstName} {sibling.lastName} (ID: {sibling.id})
+                                    <li key={sibling.id} className="card bg-base-100 shadow-md p-3">
+                                        <p><strong>Name:</strong> {sibling.firstName} {sibling.lastName} (ID: {sibling.citizenId || 'N/A'})</p>
+                                        <p className="text-sm">Role: {sibling.relationshipToFamily || 'N/A'}</p>
+                                        {/* Display other sibling details if needed */} 
                                     </li>
                                 ))}
                             </ul>
                         </div>
                     )}
 
-                    {!data.lineagePath?.length && !data.siblings?.length && (
-                        <p className="text-center text-info">No lineage or sibling information available for this individual.</p>
+                    {!data.targetRelation && !data.lineagePath?.length && !data.siblings?.length && (
+                        <p className="text-center text-info py-5">No lineage or sibling information available for this individual.</p>
                     )}
                 </div>
                 )}

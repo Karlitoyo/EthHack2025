@@ -16,7 +16,7 @@ export class Family {
   location: string;
 
   @Column({ nullable: true })
-  relationship?: string; // This might represent the role of this country, e.g., "father"
+  relationship?: string;
 
   @Column({ nullable: true })
   contactNumber?: string;
@@ -35,13 +35,13 @@ export class Family {
   relation: Relation[]; // Represents children (relations) of this family
 
   // Self-referencing relationship for parent-child families
-  @ManyToOne(() => Family, family => family.childFamilies, { nullable: true, onDelete: 'SET NULL' }) // Changed: family => family.childFamilies
-  @JoinColumn({ name: 'parentFamilyId' }) // Changed: parentCountryId to parentFamilyId for clarity
-  parentFamily: Family | null; // Changed: Type to Family | null, renamed from parentCountry
+  @ManyToOne(() => Family, family => family.childFamilies, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'parentFamilyId' })
+  parentFamily: Family | null;
 
-  @Column({ type: 'varchar', nullable: true }) // Explicit column for the foreign key
-  parentFamilyId: string | null; // Changed: parentCountryId to parentFamilyId
+  @Column({ type: 'varchar', nullable: true })
+  parentFamilyId: string | null;
 
-  @OneToMany(() => Family, family => family.parentFamily, { cascade: true }) // Changed: Relation to Family, family.parentCountry to family.parentFamily
-  childFamilies: Family[]; // Renamed from childOfFamily, type to Family[]
+  @OneToMany(() => Family, family => family.parentFamily, { cascade: true })
+  childFamilies: Family[];
 }

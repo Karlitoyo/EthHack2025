@@ -18,7 +18,8 @@ const RelationComponent = () => {
         treatment: '',
         email: '',
         contactNumber: '',
-        parentCountryId: '',
+        parentFamilyId: '',
+        isFamilyHead: false, // Add isFamilyHead to form state
     });
     console.log('Form data:', formData);
 
@@ -49,7 +50,12 @@ const RelationComponent = () => {
     }, [families]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
+        const { name, value, type } = e.target;
+        if (type === 'checkbox') {
+            setFormData({ ...formData, [name]: (e.target as HTMLInputElement).checked });
+        } else {
+            setFormData({ ...formData, [name]: value });
+        }
     };
 
     const generatePatient = async () => {
@@ -66,7 +72,8 @@ const RelationComponent = () => {
             relationship: formData.treatment, // Map treatment to relationship
             email: formData.email,
             contactNumber: formData.contactNumber,
-            parentCountryId: formData.parentCountryId,
+            parentFamilyId: formData.parentFamilyId,
+            isFamilyHead: formData.isFamilyHead, // Include isFamilyHead in payload
         };
 
         try {
@@ -254,8 +261,8 @@ const RelationComponent = () => {
                             </label>
                             <select
                                 className="select select-bordered w-full"
-                                name="parentCountryId"
-                                value={formData.parentCountryId}
+                                name="parentFamilyId"
+                                value={formData.parentFamilyId}
                                 onChange={handleChange}
                                 required
                             >
@@ -267,6 +274,21 @@ const RelationComponent = () => {
                                 ))}
                             </select>
                         </div>
+
+                        {/* Add Checkbox for isFamilyHead */}
+                        <div className="form-control">
+                            <label className="label cursor-pointer">
+                                <span className="label-text font-medium">Set as Family Head</span> 
+                                <input 
+                                    type="checkbox" 
+                                    name="isFamilyHead"
+                                    checked={formData.isFamilyHead}
+                                    onChange={handleChange}
+                                    className="checkbox checkbox-primary"
+                                />
+                            </label>
+                        </div>
+
                     </form>
 
                     <div className="flex gap-2 mb-4 mt-4">

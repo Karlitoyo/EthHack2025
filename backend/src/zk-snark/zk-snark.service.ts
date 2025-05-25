@@ -83,34 +83,22 @@ export class ZkSnarkService {
 
   async generateLineageProof(dto: GenerateLineageProofDto): Promise<any> {
     const { identifier } = dto;
-    let lineageData: LineageResponse;
+    // The prepareLineageProofInputs method now takes the general 'identifier'.
+    // It will internally resolve it to the correct relation (e.g. family head if identifier is a family.countryId)
+    // and use that relation's citizenId and its relationship to its parent family.
+    // The previous calls to findRelationWithLineage and checks on targetRelation for this specific purpose are streamlined.
+    let proofInputs;
     try {
-      lineageData = await this.relationService.findRelationWithLineage(identifier);
+      proofInputs = await this.relationService.prepareLineageProofInputs(identifier);
     } catch (error) {
       if (error instanceof NotFoundException) {
-        throw new NotFoundException(`Could not find lineage data for identifier '${identifier}': ${error.message}`);
+        throw new NotFoundException(`Could not prepare proof inputs for identifier '${identifier}': ${error.message}`);
+      } else if (error instanceof BadRequestException) { // Catch BadRequest from prepareLineageProofInputs if relation details are missing
+        throw new BadRequestException(`Failed to prepare proof inputs for identifier '${identifier}': ${error.message}`);
       }
-      throw error; // Re-throw other errors
+      // console.error(`[ZkSnarkService.generateLineageProof] Unexpected error from prepareLineageProofInputs for identifier '${identifier}':`, error);
+      throw error; // Re-throw other unexpected errors
     }
-
-    const { targetRelation } = lineageData;
-
-    if (!targetRelation.citizenId) {
-      throw new BadRequestException(
-        `Target relation (DB ID: ${targetRelation.id}) found for identifier '${identifier}' is missing a citizenId, which is required for proof generation.`,
-      );
-    }
-    if (!targetRelation.relationshipToFamily) {
-      throw new BadRequestException(
-        `Target relation (DB ID: ${targetRelation.id}, Citizen ID: ${targetRelation.citizenId}) found for identifier '${identifier}' is missing a relationshipToFamily, which is required for proof generation.`,
-      );
-    }
-
-    // Use the citizenId of the targetRelation as descendantId and its relationshipToFamily as relationshipType
-    const proofInputs = await this.relationService.prepareLineageProofInputs(
-      targetRelation.citizenId, 
-      targetRelation.relationshipToFamily,
-    );
 
     // Proceed with the existing proof generation logic using these inputs
     return this.generateProof(proofInputs);
@@ -125,31 +113,42 @@ export class ZkSnarkService {
       );
     }
 
-    // 1. Call RelationService to get all necessary inputs for ZKP based on descendant and relationship
+    // 1. Call RelationService to get all necessary inputs for ZKP.
+    // prepareLineageProofInputs now takes only the descendantId (as a general identifier).
     let proofInputs;
     try {
-      proofInputs = await this.relationService.prepareLineageProofInputs(
-        descendantId,
-        relationshipType,
-      );
+      proofInputs = await this.relationService.prepareLineageProofInputs(descendantId);
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw new NotFoundException(
-          `Could not prepare proof inputs for descendant '${descendantId}' with relationship '${relationshipType}'. Ensure the descendant and their relationship to a family exist. Error: ${error.message}`,
+          `Could not prepare proof inputs for descendant '${descendantId}'. Ensure the descendant exists and is linked to a family. Error: ${error.message}`,
+        );
+      } else if (error instanceof BadRequestException) {
+        throw new BadRequestException(
+          `Failed to prepare proof inputs for descendant '${descendantId}'. Error: ${error.message}`
         );
       }
-      throw error; // Re-throw other errors
+      // console.error(`[ZkSnarkService.generateSpecificLinkProof] Unexpected error from prepareLineageProofInputs for descendantId '${descendantId}':`, error);
+      throw error; // Re-throw other unexpected errors
     }
 
     // 2. Validate that the user-provided ancestorId matches the one derived by the system
     // proofInputs.hospital_id is the system-derived ancestorId (Family.countryId)
     if (ancestorId !== proofInputs.hospital_id) {
       throw new BadRequestException(
-        `The provided ancestorId ('${ancestorId}') does not match the actual ancestorId ('${proofInputs.hospital_id}') derived for the descendant ('${descendantId}') with relationship ('${relationshipType}'). Please verify the input data.`,
+        `The provided ancestorId ('${ancestorId}') does not match the actual ancestorId ('${proofInputs.hospital_id}') derived for the descendant ('${descendantId}'). Please verify the input data.`,
       );
     }
 
-    // 3. Call the ZkSnarkService's existing generateProof method with the data prepared by RelationService
+    // 3. Validate that the user-provided relationshipType matches the one derived by the system
+    // proofInputs.treatment is the system-derived relationship type (Relation.relationship)
+    if (relationshipType !== proofInputs.treatment) {
+      throw new BadRequestException(
+        `The provided relationshipType ('${relationshipType}') does not match the actual relationship ('${proofInputs.treatment}') of the descendant ('${descendantId}') to their parent family. Please verify the input data.`,
+      );
+    }
+
+    // 4. Call the ZkSnarkService's existing generateProof method with the data prepared by RelationService
     return this.generateProof(proofInputs);
   }
 }
