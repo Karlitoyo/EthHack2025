@@ -1,82 +1,112 @@
-## Dissertation - Karl Timmins
+# 👨‍👩‍👧‍👦 KinChain
 
-## Zero Knowledge Proofs - Irish Medical Sector
+**KinChain** is a decentralized identity protocol designed to help individuals prove **family relationships—across generations—without revealing sensitive data**. Using **Zero-Knowledge Proofs (ZKPs)** and **hashed verifiable credentials**, users can privately and securely validate their connection to parents, children, or grandparents. 
 
-## Application Overview
+KinChain anchors verified relationship claims **on-chain**, enabling users to build a lifelong, cryptographic family tree for use in **immigration, legal documentation**, and **cross-border services**. It empowers diaspora communities and stateless individuals to gain trust and access global services without relying on centralized authorities.
 
-This project demonstrates the use of Zero-Knowledge Proofs (ZKPs) within the Irish medical sector context. It allows hospitals to record patient treatments and generate ZKPs to prove specific treatment details without revealing all patient information. The system consists of the following components:
+---
 
-*   **Backend (NestJS):** Handles API requests, interacts with the database, manages hospital and patient data, coordinates with the ZKP service, and interacts with the Ethereum blockchain.
-*   **Frontend (Next.js):** Provides a user interface for hospitals to manage patient data, generate treatment proofs, and potentially validate proofs (depending on implementation).
-*   **ZKP Service (Rust/Actix):** A dedicated service responsible for generating and verifying Groth16 ZK-SNARK proofs based on treatment data and Merkle tree inclusion. It uses the Bellperson library.
-*   **Database (PostgreSQL):** Stores hospital and patient information.
-*   **Ethereum Interaction:** The backend includes functionality to submit proof details (like Merkle roots and commitments) to an Ethereum smart contract (`ZKProofLog`).
+## 📘 Description
 
-## Setup
+KinChain leverages modern cryptography to enable **trustless and privacy-preserving verification of family relationships**. The protocol:
 
-### Environment Variables
+- Uses **Zero-Knowledge Proofs** to validate relationships without exposing personal data.
+- Anchors verified claims **on-chain** to create a cryptographic family tree.
+- Enables institutions to accept these proofs without requiring sensitive documentation.
+- Supports long-term identity building, especially for marginalized or displaced individuals.
 
-Create a `.env` file in the project's root directory with the following variables:
+Built using **Nest.js** (backend) and **Next.js** (frontend), KinChain offers a scalable, modular, and secure infrastructure that respects **user privacy**, **data minimization**, and **institutional interoperability**.
 
-```env
-# Database Configuration (used by backend and db service)
-POSTGRES_USER=your_db_user
-POSTGRES_PASSWORD=your_db_password
-POSTGRES_DB=hospital_db
-DB_HOST=db # Service name in docker-compose
-DB_PORT=5432
+---
 
-# Backend Ethereum Configuration
-ETH_PROVIDER_URL=http://your_ethereum_node_rpc_url # e.g., Infura, Alchemy, or local node
-PRIVATE_KEY=your_ethereum_wallet_private_key # For submitting proofs to the contract
-ZK_PROOF_LOG_CONTRACT=your_deployed_zkprooflog_contract_address
-ZKP_SERVICE_URL=http://rust-zkp-service:port_number
+## ❗ Business Problem
 
-# Frontend (Optional - if needed by Next.js build/runtime)
-# NEXT_PUBLIC_...=...
-```
+Current identity systems are:
 
-**Note:** Ensure the `PRIVATE_KEY` corresponds to an account with sufficient funds on the target Ethereum network to pay for transaction gas fees.
+- **Centralized** and vulnerable to manipulation.
+- **Not interoperable** across jurisdictions.
+- **Invasive**—requiring submission of personal, sensitive documents.
+- **Unavailable** to millions of stateless or displaced individuals.
 
-### ZKP Parameters
+There is no decentralized method to **trustlessly prove familial relationships** while preserving user privacy and data sovereignty.
 
-The ZKP service requires pre-generated parameters (`groth16_params.bin`) and a corresponding hash file (`params.circuit_hash`) located in the `zkp-params/` directory.
+KinChain solves these challenges by offering:
 
-1.  **First Run:** When starting the `zksnark_service` for the first time via Docker Compose, it will automatically perform a trusted setup if the parameter files are missing or if the circuit hash doesn't match the current code. This process can take a significant amount of time.
-2.  **Subsequent Runs:** If the files exist and the hash matches, the service will load the existing parameters.
-3.  **Volume Mount:** The `docker-compose.yaml` mounts the local `./zkp-params` directory into the container at `/app/zkp-params`, ensuring persistence of these files.
+- Verifiable and private proofs of family relationships.
+- Cryptographic lineage anchored to blockchain.
+- A user-controlled identity model.
 
-## Deployment with Docker
+---
 
-The application is containerized using Docker and orchestrated with Docker Compose.
+## 🧑‍💼 User Stories
 
-1.  **Prerequisites:**
-    *   Docker installed: [https://docs.docker.com/get-docker/](https://docs.docker.com/get-docker/)
-    *   Docker Compose installed: [https://docs.docker.com/compose/install/](https://docs.docker.com/compose/install/)
-2.  **Create `.env` file:** As described in the "Environment Variables" section above, create the `.env` file in the project root.
-3.  **Build and Run:** Open a terminal in the project root directory (`/home/karlito/projects/dissertation`) and run:
+### 👪 Diaspora User
+> Needs to prove a family connection for immigration purposes but lacks access to centralized records.  
+✅ Uses KinChain to create and share a ZKP-based proof of relationship with a parent—accepted by immigration authorities.
 
-    ```bash
-    docker-compose up --build
-    ```
+---
 
-    *   `--build`: Forces Docker to rebuild the images if any changes were made to Dockerfiles or application code.
-    *   The first time you run this, it might take longer due to downloading base images, installing dependencies, and potentially generating ZKP parameters.
+### 👴 Grandparent Claim  
+> Needs to prove connection to a grandchild for inheritance but doesn't want to share sensitive personal data.  
+✅ Verifiable credentials from the parent link both generations in a privacy-preserving, on-chain relationship tree.
 
-4.  **Accessing Services:**
-    *   **Frontend:** `http://localhost:4000`
-    *   **Backend API:** `http://localhost:4001`
-    *   **ZKP Service:** `http://localhost:8080` (Primarily used by the backend)
-    *   **Database:** Accessible internally via port `5432` (or `5433` from the host machine).
+---
 
-5.  **Stopping the Application:** Press `Ctrl+C` in the terminal where `docker-compose up` is running. To remove the containers and network, run:
+### 🧾 Stateless or Refugee Individual  
+> Lost official documents due to conflict and displacement.  
+✅ Reconstructs identity through trusted relative attestations and cryptographic verification on KinChain.
 
-    ```bash
-    docker-compose down
-    ```
+---
 
-    To remove the database volume (and lose all data), add the `-v` flag:
+## 🎯 Business Outcomes
 
-    ```bash
-    docker-compose down -v
-    ```
+- ✅ **Secure, trustless identity validation**
+- 🔐 **Privacy-first by design**
+- 🌍 **Cross-border and institutional interoperability**
+- 🏛️ **Support for legal, immigration, and heritage claims**
+- 🌱 **Empowerment for stateless and underrepresented individuals**
+
+---
+
+## 👥 Stakeholders
+
+- **Individuals & Families** – Needing to prove lineage securely and privately.
+- **Diaspora & Migrant Communities** – Seeking access to legal systems across borders.
+- **Governments & Institutions** – Immigration, legal, consular services that need verified, privacy-safe lineage claims.
+- **NGOs & Human Rights Groups** – Working with stateless, undocumented, or displaced populations.
+- **Digital Identity Ecosystems** – Platforms integrating verifiable credentials and decentralized ID standards.
+
+---
+
+## 🔧 Tech Stack
+
+- **Nest.js** – Backend framework
+- **Next.js** – Frontend framework
+- **Zero-Knowledge Proofs** – Identity verification
+- **Hashed Verifiable Credentials** – Relationship attestations
+- **Ethereum / Blockchain** – On-chain anchoring and trust
+- **Smart Contracts** – Credential issuance and validation
+
+---
+
+## 🔐 Privacy & Security
+
+- No raw PII or documents are stored on-chain.
+- Proofs are constructed using ZKPs.
+- All relationship attestations are hashed, signed, and timestamped.
+- User consent is required for all verifications.
+
+---
+
+## 🛠️ Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/yourorg/kinchain.git
+cd kinchain
+
+# Install dependencies
+npm install
+
+# Run frontend and backend
+npm run dev
