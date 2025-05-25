@@ -1,10 +1,10 @@
 import Layout from "../components/Layout";
 import RelationComponent from "../components/relationRegisterPage/RelationRegister";
 
-const RelationPage = () => (
-  <Layout title="User Page | KinChain">
+const UserRegister = () => (
+  <Layout title="User Register Page | KinChain" stepIdx={2}>
     <RelationComponent />
   </Layout>
 );
 
-export default RelationPage;
+export default UserRegister;

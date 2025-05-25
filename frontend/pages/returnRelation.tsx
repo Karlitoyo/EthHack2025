@@ -1,28 +1,28 @@
 import Link from 'next/link';
 import Layout from '../components/Layout';
-import GenerateProof from '../components/generateProofPage/GenerateProofPage';
+import FamilySearch from '../components/returnData/ReturnData'; // Updated import
 
-const GenerateProofPage = () => (
+const IndexPage = () => (
   <Layout
-    title='Generate Proof Page | KinChain'
-    stepIdx={4}
+    title='Return Relation Page | KinChain'
+    stepIdx={3}
   >
     <div className='flex justify-between max-w-2xl mx-auto p-6 pb-0'>
       <Link
-        href='/returnRelation'
+        href='/userRegister'
         className={'btn btn-outline'}
       >
         Back
       </Link>
       <Link
-        href='/validateProof'
+        href='/generateProof'
         className={'btn btn-outline'}
       >
         Next
       </Link>
     </div>
-    <GenerateProof />
+    <FamilySearch />
   </Layout>
 );
 
-export default GenerateProofPage;
+export default IndexPage;
