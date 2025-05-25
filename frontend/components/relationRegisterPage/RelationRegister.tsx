@@ -292,7 +292,7 @@ const RelationComponent = () => {
                     </form>
 
                     <div className="flex gap-2 mb-4 mt-4">
-                        <button className="btn btn-primary" onClick={generatePatient}>Create Patient</button>
+                        <button className="btn btn-primary" onClick={generatePatient}>Create Relation</button>
                     </div>
                 </div>
             </div>
