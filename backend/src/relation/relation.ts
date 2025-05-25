@@ -18,8 +18,8 @@ export interface FrontendRelation {
   email: string | null;
   address: string | null;
   contactNumber: string | null;
-  relationshipToFamily: string | null; // Changed from 'relationship'
-  merkleRoot: string | null; // Changed from 'merkleRoot' to match the backend structure
+  relationshipToFamily: string | null;
+  merkleRoot: string | null;
 }
 
 // Define and export a type for the lineage path items
@@ -51,7 +51,7 @@ export class RelationService {
   ) {}
 
   async createRelation(createRelationDto: CitizenDataDto): Promise<Relation> {
-    const { citizenId, relationship, parentFamilyId: parentFamilyId, isFamilyHead } = createRelationDto;
+    const { citizenId, parentFamilyId: parentFamilyId, isFamilyHead } = createRelationDto;
 
     const existingRelation = await this.relationRepository.findOne({
       where: { citizenId }, 
