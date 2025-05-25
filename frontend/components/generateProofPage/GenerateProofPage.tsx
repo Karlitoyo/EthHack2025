@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Toaster } from 'react-hot-toast';
+import toast, { Toaster } from 'react-hot-toast';
 
 // Define the type for the modal content
 interface ModalContent {
@@ -73,13 +73,30 @@ export default function GenerateProof() {
     setIsSubmittingProof(true);
 
     try {
+      // The structure of proof.proof and proof.public_inputs from the ZKP service
+      // already matches what the backend /ethereum/submit endpoint expects.
+      // proof.public_inputs[0] will be merkleRoot
+      // proof.public_inputs[1] will be preimageCommitment
+      const payload = {
+        proof: proof.proof, // Array of numbers (bytes)
+        public_inputs: proof.public_inputs // Array of two arrays of numbers (bytes for uint256)
+      };
+
+      // Validate that proof and public_inputs exist and have the correct structure
+      if (!payload.proof || !Array.isArray(payload.proof)) {
+        throw new Error('Proof data is missing or invalid.');
+      }
+      if (!payload.public_inputs || !Array.isArray(payload.public_inputs) || payload.public_inputs.length !== 2) {
+        throw new Error('Public inputs are missing or invalid (must be an array of two elements).');
+      }
+      if (!Array.isArray(payload.public_inputs[0]) || !Array.isArray(payload.public_inputs[1])) {
+        throw new Error('Each element of public_inputs must be an array (bytes for uint256).');
+      }
+
       const submitRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/ethereum/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          proof: proof.proof,
-          public_inputs: proof.public_inputs
-        })
+        body: JSON.stringify(payload)
       });
 
       if (!submitRes.ok) {
@@ -131,26 +148,55 @@ export default function GenerateProof() {
         
         <button
           type="submit"
+          className={`btn btn-primary mt-4 ${isGeneratingProof ? 'loading' : ''}`}
           disabled={isGeneratingProof || isSubmittingProof}
-          className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
         >
-          {isGeneratingProof ? 'Generating Proof...' : 'Generate Proof'}
+          {isGeneratingProof ? 'Generating...' : 'Generate Proof'}
         </button>
-      </form>
 
-      {proof && !error && (
-        <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-md">
-          <h3 className="text-lg font-medium text-green-800">Proof Generated Successfully!</h3>
-          <pre className="mt-2 text-sm text-green-700 overflow-x-auto">{JSON.stringify(proof, null, 2)}</pre>
-          <button
-            onClick={handleSubmitProof}
-            disabled={isSubmittingProof || !proof}
-            className="mt-4 w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-          >
-            {isSubmittingProof ? 'Submitting Proof...' : 'Submit Proof to Chain'}
-          </button>
-        </div>
-      )}
+        {error && !isModalOpen && <div className="alert alert-error mt-4">{error}</div>}
+
+        {proof && (
+          <div className="mt-6">
+            <h3 className="text-xl font-semibold mb-2">Proof Generated:</h3>
+            <textarea
+              readOnly
+              value={JSON.stringify(proof, null, 2)}
+              rows={8}
+              className="textarea textarea-bordered w-full font-mono text-sm max-h-64 overflow-y-auto"
+              id="proof-textarea"
+            />
+            <div className="flex space-x-2 mt-4">
+              <button
+                type="button"
+                className={`btn btn-secondary ${isSubmittingProof ? 'loading' : ''}`}
+                onClick={handleSubmitProof}
+                disabled={!proof || isSubmittingProof || isGeneratingProof}
+              >
+                {isSubmittingProof ? 'Submitting...' : 'Submit Proof On-Chain'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(JSON.stringify(proof, null, 2))
+                    .then(() => {
+                        toast.success('Proof copied successfully!');
+                      console.log('Proof copied to clipboard!');
+                    })
+                    .catch(err => {
+                      console.error('Failed to copy proof: ', err);
+                      toast.error('Failed to copy Proof!');
+                    });
+                }}
+                disabled={!proof || isGeneratingProof || isSubmittingProof}
+              >
+                Copy Proof
+              </button>
+            </div>
+          </div>
+        )}
+      </form>
 
       {/* DaisyUI Modal */}
       {isModalOpen && modalContent && (
