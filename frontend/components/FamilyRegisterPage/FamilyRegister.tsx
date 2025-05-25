@@ -230,7 +230,7 @@ const FamilyComponent = () => {
                     </form>
 
                     <div className="flex gap-2 mb-4 mt-4">
-                        <button className="btn btn-primary" onClick={generateFamily}>Create Relation</button>
+                        <button className="btn btn-primary" onClick={generateFamily}>Create Family</button>
                     </div>
                 </div>
             </div>
