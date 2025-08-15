@@ -1,3 +1,3 @@
 ## Dissertation - Karl Timmins
 
-## Zero Knowledge Proofs - Irish Medical Sector
+## Zero Knowledge Proofs - Eth Dublin 2025
